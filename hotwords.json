@@ -1,0 +1,35 @@
+{
+  "hotwords": {
+    "ây pi ai": "API",
+    "ai pi ai": "API",
+    "diếp pho mơ": "Zipformer",
+    "sọt pho mơ": "Sortformer",
+    "ti ta nét": "TitaNet",
+    "vi bốt": "ViBERT",
+    "đíp phin tơ": "DeepFilter",
+    "áp pi": "App",
+    "vê ét cốt": "VS Code",
+    "bê tông cốt thép": "bê tông cốt thép",
+    "ba ra xê ta mon": "Paracetamol",
+    "pa ra xi ta mol": "Paracetamol",
+    "kháng sinh": "kháng sinh",
+    "cô vít": "COVID-19",
+    "ai ô ét": "iOS",
+    "an roi": "Android",
+    "u ét bờ": "USB",
+    "ghi giát": "GitHub",
+    "u ét đê": "USD"
+  },
+  "patterns": [
+    {
+      "pattern": "\\b(ây|ai)\\s+pi\\s+ai\\b",
+      "replacement": "API",
+      "flags": "i"
+    },
+    {
+      "pattern": "\\b(vê\\s+ét\\s+cốt|vê\\s+ét\\s+cốt)\\b",
+      "replacement": "VS Code",
+      "flags": "i"
+    }
+  ]
+}

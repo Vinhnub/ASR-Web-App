@@ -1,0 +1,290 @@
+[
+  {
+    "model_name": "ViBERT-Capu (ONNX INT8)",
+    "disk_size_mb": 110.35,
+    "device": "cpu",
+    "mean_latency_ms": 128.32,
+    "median_latency_ms": 137.98,
+    "p95_latency_ms": 254.75,
+    "min_latency_ms": 8.15,
+    "max_latency_ms": 452.2,
+    "sentences_per_sec": 7.79,
+    "words_per_sec": 198.01,
+    "peak_ram_mb": 1994.83,
+    "peak_vram_mb": 380.06,
+    "metrics": {
+      "sentence_count": 300,
+      "total_words": 7624,
+      "exact_match_rate": 24.67,
+      "wer": 8.7,
+      "casing_accuracy": 97.04,
+      "punct_overall_precision": 74.87,
+      "punct_overall_recall": 68.98,
+      "punct_overall_f1": 71.81,
+      "punct_macro_f1": 59.06,
+      "punct_._precision": 79.8,
+      "punct_._recall": 77.45,
+      "punct_._f1": 78.61,
+      "punct_,_precision": 73.88,
+      "punct_,_recall": 58.96,
+      "punct_,_f1": 65.58,
+      "punct_?_precision": 96.67,
+      "punct_?_recall": 87.88,
+      "punct_?_f1": 92.06,
+      "punct_:_precision": 0.0,
+      "punct_:_recall": 0.0,
+      "punct_:_f1": 0.0,
+      "punct_!_precision": 0.0,
+      "punct_!_recall": 0.0,
+      "punct_!_f1": 0.0
+    },
+    "sample_predictions": [
+      {
+        "id": 1,
+        "raw": "điều này có nghĩa là để xuất hiện bệnh cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền",
+        "target": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền,",
+        "prediction": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền."
+      },
+      {
+        "id": 2,
+        "raw": "rồi tiếp theo về lợi khuẩn thì sản phẩm alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần",
+        "target": "Rồi tiếp theo, về lợi khuẩn thì sản phẩm Alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần.",
+        "prediction": "Rồi tiếp theo về lợi khuẩn thì sản phẩm Alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần."
+      },
+      {
+        "id": 3,
+        "raw": "rồi về chất khoáng ấy thì alpha lipid thì có ba loại khoáng chất chính đó là sắt đó là magie và đó là canxi",
+        "target": "Rồi về chất khoáng ấy thì Alpha lipid thì có ba loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi.",
+        "prediction": "Rồi về chất khoáng ấy thì alpha, lipid thì có 3 loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi."
+      },
+      {
+        "id": 4,
+        "raw": "và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt",
+        "target": "Và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt.",
+        "prediction": "Và chúng ta thấy là đối với người bình thường thì Methionin lại rất là tốt."
+      },
+      {
+        "id": 5,
+        "raw": "đây là những cái nghiên cứu các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt",
+        "target": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt.",
+        "prediction": "Đây là những cái nghiên cứu, Các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt."
+      }
+    ]
+  },
+  {
+    "model_name": "ViBERT-Capu (ONNX FP32 - CPU)",
+    "disk_size_mb": 438.17,
+    "device": "cpu",
+    "mean_latency_ms": 204.42,
+    "median_latency_ms": 229.32,
+    "p95_latency_ms": 312.72,
+    "min_latency_ms": 18.62,
+    "max_latency_ms": 549.57,
+    "sentences_per_sec": 4.89,
+    "words_per_sec": 124.31,
+    "peak_ram_mb": 2001.29,
+    "peak_vram_mb": 380.06,
+    "metrics": {
+      "sentence_count": 300,
+      "total_words": 7624,
+      "exact_match_rate": 24.67,
+      "wer": 8.74,
+      "casing_accuracy": 97.15,
+      "punct_overall_precision": 74.66,
+      "punct_overall_recall": 67.28,
+      "punct_overall_f1": 70.78,
+      "punct_macro_f1": 58.31,
+      "punct_._precision": 78.52,
+      "punct_._recall": 76.47,
+      "punct_._f1": 77.48,
+      "punct_,_precision": 73.19,
+      "punct_,_recall": 56.03,
+      "punct_,_f1": 63.47,
+      "punct_?_precision": 93.75,
+      "punct_?_recall": 90.91,
+      "punct_?_f1": 92.31,
+      "punct_:_precision": 0.0,
+      "punct_:_recall": 0.0,
+      "punct_:_f1": 0.0,
+      "punct_!_precision": 0.0,
+      "punct_!_recall": 0.0,
+      "punct_!_f1": 0.0
+    },
+    "sample_predictions": [
+      {
+        "id": 1,
+        "raw": "điều này có nghĩa là để xuất hiện bệnh cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền",
+        "target": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền,",
+        "prediction": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền."
+      },
+      {
+        "id": 2,
+        "raw": "rồi tiếp theo về lợi khuẩn thì sản phẩm alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần",
+        "target": "Rồi tiếp theo, về lợi khuẩn thì sản phẩm Alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần.",
+        "prediction": "Rồi tiếp theo về lợi khuẩn thì sản phẩm Alpha Lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần."
+      },
+      {
+        "id": 3,
+        "raw": "rồi về chất khoáng ấy thì alpha lipid thì có ba loại khoáng chất chính đó là sắt đó là magie và đó là canxi",
+        "target": "Rồi về chất khoáng ấy thì Alpha lipid thì có ba loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi.",
+        "prediction": "Rồi về chất khoáng ấy thì alpha lipid thì có 3 loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi."
+      },
+      {
+        "id": 4,
+        "raw": "và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt",
+        "target": "Và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt.",
+        "prediction": "Và chúng ta thấy là đối với người bình thường thì Methionin lại rất là tốt."
+      },
+      {
+        "id": 5,
+        "raw": "đây là những cái nghiên cứu các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt",
+        "target": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt.",
+        "prediction": "Đây là những cái nghiên cứu, Các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt."
+      }
+    ]
+  },
+  {
+    "model_name": "VFastPunct (BiLSTM-CRF - CPU)",
+    "disk_size_mb": 378.84,
+    "device": "cpu",
+    "mean_latency_ms": 172.95,
+    "median_latency_ms": 168.76,
+    "p95_latency_ms": 193.36,
+    "min_latency_ms": 142.31,
+    "max_latency_ms": 317.59,
+    "sentences_per_sec": 5.78,
+    "words_per_sec": 146.93,
+    "peak_ram_mb": 1992.83,
+    "peak_vram_mb": 380.06,
+    "metrics": {
+      "sentence_count": 300,
+      "total_words": 7624,
+      "exact_match_rate": 25.33,
+      "wer": 6.14,
+      "casing_accuracy": 97.15,
+      "punct_overall_precision": 79.89,
+      "punct_overall_recall": 69.29,
+      "punct_overall_f1": 74.21,
+      "punct_macro_f1": 69.23,
+      "punct_._precision": 89.69,
+      "punct_._recall": 85.29,
+      "punct_._f1": 87.44,
+      "punct_,_precision": 68.13,
+      "punct_,_recall": 55.7,
+      "punct_,_f1": 61.29,
+      "punct_?_precision": 84.21,
+      "punct_?_recall": 48.48,
+      "punct_?_f1": 61.54,
+      "punct_:_precision": 100.0,
+      "punct_:_recall": 50.0,
+      "punct_:_f1": 66.67,
+      "punct_!_precision": 0.0,
+      "punct_!_recall": 0.0,
+      "punct_!_f1": 0.0
+    },
+    "sample_predictions": [
+      {
+        "id": 1,
+        "raw": "điều này có nghĩa là để xuất hiện bệnh cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền",
+        "target": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền,",
+        "prediction": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền."
+      },
+      {
+        "id": 2,
+        "raw": "rồi tiếp theo về lợi khuẩn thì sản phẩm alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần",
+        "target": "Rồi tiếp theo, về lợi khuẩn thì sản phẩm Alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần.",
+        "prediction": "Rồi tiếp theo về lợi khuẩn thì sản phẩm Alpha Lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần."
+      },
+      {
+        "id": 3,
+        "raw": "rồi về chất khoáng ấy thì alpha lipid thì có ba loại khoáng chất chính đó là sắt đó là magie và đó là canxi",
+        "target": "Rồi về chất khoáng ấy thì Alpha lipid thì có ba loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi.",
+        "prediction": "Rồi về chất khoáng ấy thì Alpha Lipid thì có ba loại khoáng chất chính đó là sắt, đó là magie và đó là canxi."
+      },
+      {
+        "id": 4,
+        "raw": "và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt",
+        "target": "Và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt.",
+        "prediction": "Và chúng ta thấy là đối với người bình thường thì Methionin lại rất là tốt."
+      },
+      {
+        "id": 5,
+        "raw": "đây là những cái nghiên cứu các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt",
+        "target": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt.",
+        "prediction": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của Methionin giúp cho cơ thể người bình thường rất là tốt."
+      }
+    ]
+  },
+  {
+    "model_name": "VFastPunct (BiLSTM-CRF - CUDA)",
+    "disk_size_mb": 378.84,
+    "device": "cuda",
+    "mean_latency_ms": 77.49,
+    "median_latency_ms": 82.53,
+    "p95_latency_ms": 108.67,
+    "min_latency_ms": 40.63,
+    "max_latency_ms": 209.92,
+    "sentences_per_sec": 12.9,
+    "words_per_sec": 327.89,
+    "peak_ram_mb": 2243.27,
+    "peak_vram_mb": 453.85,
+    "metrics": {
+      "sentence_count": 300,
+      "total_words": 7624,
+      "exact_match_rate": 25.33,
+      "wer": 6.14,
+      "casing_accuracy": 97.15,
+      "punct_overall_precision": 79.89,
+      "punct_overall_recall": 69.29,
+      "punct_overall_f1": 74.21,
+      "punct_macro_f1": 69.23,
+      "punct_._precision": 89.69,
+      "punct_._recall": 85.29,
+      "punct_._f1": 87.44,
+      "punct_,_precision": 68.13,
+      "punct_,_recall": 55.7,
+      "punct_,_f1": 61.29,
+      "punct_?_precision": 84.21,
+      "punct_?_recall": 48.48,
+      "punct_?_f1": 61.54,
+      "punct_:_precision": 100.0,
+      "punct_:_recall": 50.0,
+      "punct_:_f1": 66.67,
+      "punct_!_precision": 0.0,
+      "punct_!_recall": 0.0,
+      "punct_!_f1": 0.0
+    },
+    "sample_predictions": [
+      {
+        "id": 1,
+        "raw": "điều này có nghĩa là để xuất hiện bệnh cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền",
+        "target": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền,",
+        "prediction": "Điều này có nghĩa là để xuất hiện bệnh, cả hai bản sao của gen phải bị đột biến và bệnh nhân phải là nam giới về mặt di truyền."
+      },
+      {
+        "id": 2,
+        "raw": "rồi tiếp theo về lợi khuẩn thì sản phẩm alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần",
+        "target": "Rồi tiếp theo, về lợi khuẩn thì sản phẩm Alpha lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần.",
+        "prediction": "Rồi tiếp theo về lợi khuẩn thì sản phẩm Alpha Lipid trước đây đã được trang bị rất tốt với cái hàm lượng lợi khuẩn là 1 tỷ lợi khuẩn tiêu hóa trên một phần."
+      },
+      {
+        "id": 3,
+        "raw": "rồi về chất khoáng ấy thì alpha lipid thì có ba loại khoáng chất chính đó là sắt đó là magie và đó là canxi",
+        "target": "Rồi về chất khoáng ấy thì Alpha lipid thì có ba loại khoáng chất chính, đó là sắt, đó là magie và đó là canxi.",
+        "prediction": "Rồi về chất khoáng ấy thì Alpha Lipid thì có ba loại khoáng chất chính đó là sắt, đó là magie và đó là canxi."
+      },
+      {
+        "id": 4,
+        "raw": "và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt",
+        "target": "Và chúng ta thấy là đối với người bình thường thì methionin lại rất là tốt.",
+        "prediction": "Và chúng ta thấy là đối với người bình thường thì Methionin lại rất là tốt."
+      },
+      {
+        "id": 5,
+        "raw": "đây là những cái nghiên cứu các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt",
+        "target": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của methionin giúp cho cơ thể người bình thường rất là tốt.",
+        "prediction": "Đây là những cái nghiên cứu, các nghiên cứu trên thế giới cập nhật gần đây đã cho thấy là chức năng của Methionin giúp cho cơ thể người bình thường rất là tốt."
+      }
+    ]
+  }
+]

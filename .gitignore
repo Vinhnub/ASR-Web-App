@@ -216,3 +216,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+testing_audio
+NoiseFilter/Testing_Audio

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime ASR Pipeline Studio</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="stylesheet" href="/static/style.css?v=5.1">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <i class="fa-solid fa-microphone-lines logo-icon"></i>
+        <div>
+          <h1>Realtime ASR Pipeline Studio</h1>
+          <p class="subtitle">DeepFilterNet3 • ZipFormer • SortFormer • TitaNet • Hotwords • ViBERT-capu</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <span id="wsStatusBadge" class="badge badge-disconnected">
+          <i class="fa-solid fa-circle-dot"></i> <span id="wsStatusText">WebSocket: Đang kết nối...</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+      <!-- Left Column: Controls & Toggles -->
+      <aside class="sidebar-card">
+        <h3><i class="fa-solid fa-sliders"></i> Tùy Chọn Mô Hình (Toggles)</h3>
+        <p class="section-desc">Bật hoặc tắt từng khối xử lý độc lập trong pipeline:</p>
+
+        <div class="toggle-list">
+          <!-- 1. Denoise -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-volume-xmark text-muted"></i> Denoise</span>
+                <span class="toggle-model">DeepFilterNet3</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-denoise" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleDenoise" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-denoise">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Mức độ khử nhiễu:</span>
+                  <span id="badge_denoise_atten_lim_db" class="inline-badge">15 dB (Tối ưu rõ tiếng)</span>
+                </div>
+                <input type="range" id="param_denoise_atten_lim_db" min="0" max="50" step="1" value="15" data-unit="dB" class="inline-slider">
+                <div class="inline-param-desc">15 dB = Mức tối ưu bảo toàn 100% âm đầu khi người mới nói; 0 dB = Không khử; Max: 50 dB.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. ASR Streaming -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-wave-square text-muted"></i> ASR Streaming</span>
+                <span class="toggle-model">ZipFormer (RNNT Cache)</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-asr" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleAsr" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-asr">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Phương thức giải mã:</span>
+                </div>
+                <select id="param_asr_decoding_method" class="inline-select">
+                  <option value="modified_beam_search" selected>Modified Beam Search</option>
+                  <option value="greedy_search">Greedy Search</option>
+                </select>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Beam Search Paths:</span>
+                  <span id="badge_asr_max_active_paths" class="inline-badge">4 paths</span>
+                </div>
+                <input type="number" id="param_asr_max_active_paths" min="1" max="16" step="1" value="4" data-unit="paths" class="inline-number">
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Số chữ hiển thị mỗi đợt (Interim):</span>
+                  <span id="badge_interim_max_words" class="inline-badge">20 từ</span>
+                </div>
+                <input type="range" id="param_interim_max_words" min="5" max="60" step="5" value="20" data-unit=" từ" class="inline-slider">
+                <div class="inline-param-desc">Khi nhận đủ số chữ này, màn hình sẽ ẩn toàn bộ để hiển thị các chữ tiếp theo.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Tự ẩn khi ngừng nói (giây):</span>
+                  <span id="badge_interim_idle_timeout_s" class="inline-badge">3s</span>
+                </div>
+                <input type="range" id="param_interim_idle_timeout_s" min="1" max="10" step="0.5" value="3" data-unit="s" class="inline-slider">
+                <div class="inline-param-desc">Nếu quá m giây không có từ mới nào xuất hiện, chữ tức thì sẽ tự động ẩn đi.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Speaker Diarization -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-users-viewfinder text-muted"></i> Speaker Diarization</span>
+                <span class="toggle-model">NVIDIA SortFormer (AOSC)</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-diarization" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleDiarization" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-diarization">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Collar Margin (Nối câu):</span>
+                  <span id="badge_diarization_collar" class="inline-badge">0.25s</span>
+                </div>
+                <input type="range" id="param_diarization_collar" min="0.00" max="1.00" step="0.05" value="0.25" data-unit="s" class="inline-slider">
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Độ dài câu tối thiểu:</span>
+                  <span id="badge_diarization_min_duration" class="inline-badge">0.20s</span>
+                </div>
+                <input type="range" id="param_diarization_min_duration" min="0.10" max="1.00" step="0.05" value="0.20" data-unit="s" class="inline-slider">
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Kích thước Frame (Chunk):</span>
+                  <span id="badge_diarization_chunk_len" class="inline-badge">340 frames</span>
+                </div>
+                <input type="number" id="param_diarization_chunk_len" min="100" max="500" step="20" value="340" data-unit="frames" class="inline-number">
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Speaker Verification -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-id-badge text-muted"></i> Speaker Verification</span>
+                <span class="toggle-model">NVIDIA TitaNet (Voiceprint)</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-verification" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleVerification" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-verification">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Ngưỡng Cosine (Threshold):</span>
+                  <span id="badge_verification_threshold" class="inline-badge">0.55</span>
+                </div>
+                <input type="range" id="param_verification_threshold" min="0.30" max="0.90" step="0.01" value="0.55" class="inline-slider">
+                <div class="inline-param-desc">Giảm để dễ nhận diện; tăng để khắt khe hơn.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Độ dài nói tối thiểu:</span>
+                  <span id="badge_min_speech_duration_for_id" class="inline-badge">0.80s</span>
+                </div>
+                <input type="range" id="param_min_speech_duration_for_id" min="0.30" max="3.00" step="0.05" value="0.80" data-unit="s" class="inline-slider">
+              </div>
+            </div>
+          </div>
+
+          <!-- 4b. Real-time Multi-Speaker Live Tracking -->
+          <div class="toggle-item" style="border-left: 3px solid var(--accent, #6366f1);">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-users-gear text-accent"></i> Realtime Multi-Speaker</span>
+                <span class="toggle-model">Phân tách & Định danh trực tiếp khi nói</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-realtime-speaker" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleRealtimeDiarization" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-realtime-speaker">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Số từ gần nhất hiển thị:</span>
+                  <span id="badge_max_recent_words_per_speaker" class="inline-badge">25 từ</span>
+                </div>
+                <input type="range" id="param_max_recent_words_per_speaker" min="5" max="100" step="5" value="25" data-unit="từ" class="inline-slider">
+                <div class="inline-param-desc">Giới hạn số từ mới nhất trong thẻ phát biểu của từng người.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Thời gian ẩn người không nói:</span>
+                  <span id="badge_speaker_inactivity_timeout_s" class="inline-badge">7s</span>
+                </div>
+                <input type="range" id="param_speaker_inactivity_timeout_s" min="3" max="30" step="1" value="7" data-unit="s" class="inline-slider">
+                <div class="inline-param-desc">Tự động ẩn thẻ của người nói nếu im lặng quá số giây này.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. In-Decoding Hotwords -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-bolt text-muted"></i> In-Decoding Hotwords</span>
+                <span class="toggle-model">ZipFormer Contextual Biasing</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-hotwords" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleHotwords" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-hotwords">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Điểm ưu tiên (Bonus Score):</span>
+                  <span id="badge_asr_hotwords_score" class="inline-badge">+2.0 pts</span>
+                </div>
+                <input type="range" id="param_asr_hotwords_score" min="0.5" max="10.0" step="0.5" value="2.0" data-unit="pts" data-prefix="+" class="inline-slider">
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. Automatic Punctuation -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-font text-muted"></i> Automatic Punctuation</span>
+                <span class="toggle-model">ViBERT-capu ONNX</span>
+              </div>
+              <div class="toggle-controls">
+                <label class="switch">
+                  <input type="checkbox" id="togglePunctuation" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button id="btnApplyToggles" class="btn btn-secondary btn-block">
+          <i class="fa-solid fa-sync"></i> Cập Nhật Cấu Hình Tức Thì
+        </button>
+        <button id="btnResetInlineParams" class="btn btn-outline btn-block btn-sm" style="margin-top: 8px;">
+          <i class="fa-solid fa-rotate-left"></i> Khôi Phục Thông Số Mặc Định
+        </button>
+
+        <div id="toggleProgressWrapper" class="mini-progress-wrapper" style="display: none; margin-top: 10px;">
+          <div class="progress-bar-track mini">
+            <div id="toggleProgressBar" class="progress-bar-fill progress-indeterminate" style="width: 100%;"></div>
+          </div>
+        </div>
+        <div id="toggleAlert" class="alert-banner" style="display: none; margin-top: 8px;"></div>
+
+        <hr class="divider">
+
+        <!-- Quản lý Người Nói & Hotwords & Cấu hình Model -->
+        <div class="quick-management">
+          <button id="btnOpenSpeakers" class="btn btn-outline btn-sm btn-block">
+            <i class="fa-solid fa-users"></i> Quản Lý Danh Tính Giọng Nói
+          </button>
+          <button id="btnOpenHotwords" class="btn btn-outline btn-sm btn-block">
+            <i class="fa-solid fa-bolt"></i> Quản Lý Từ Khóa Hotwords (ZipFormer)
+          </button>
+          <button id="btnOpenModelSettings" class="btn btn-outline btn-sm btn-block" style="margin-top: 6px;">
+            <i class="fa-solid fa-sliders"></i> Cấu Hình Thông Số Model (AI Parameters)
+          </button>
+        </div>
+      </aside>
+
+      <!-- Right Column: Audio Source & Realtime Display -->
+      <main class="content-card">
+        <!-- Tabs -->
+        <div class="tabs-header">
+          <button class="tab-btn active" data-tab="tab-mic">
+            <i class="fa-solid fa-microphone"></i> 1. Thu Âm Microphone (Live Stream)
+          </button>
+          <button class="tab-btn" data-tab="tab-file">
+            <i class="fa-solid fa-film"></i> 2. Tải Lên Video / Âm Thanh (Offline)
+          </button>
+        </div>
+
+        <!-- Tab 1: Microphone -->
+        <div id="tab-mic" class="tab-content active">
+          <div class="mic-controls">
+            <button id="btnStartRecord" class="btn btn-primary btn-lg">
+              <i class="fa-solid fa-circle"></i> Bắt Đầu Thu Âm
+            </button>
+            <button id="btnStopRecord" class="btn btn-danger btn-lg" disabled>
+              <i class="fa-solid fa-stop"></i> Dừng & Chốt Kết Quả
+            </button>
+            <button id="btnCancelRecord" class="btn btn-warning btn-lg" style="display: none;">
+              <i class="fa-solid fa-ban"></i> Hủy Thu Âm
+            </button>
+            <button id="btnClearTranscript" class="btn btn-outline">
+              <i class="fa-solid fa-trash"></i> Xóa Màn Hình
+            </button>
+          </div>
+
+          <div class="meter-container">
+            <span class="meter-label">Tín hiệu âm thanh:</span>
+            <div class="meter-bar-wrapper">
+              <div id="meterBar" class="meter-bar"></div>
+            </div>
+            <span id="recordTimer" class="timer-badge">00:00</span>
+          </div>
+
+          <!-- Interim Live Text Box -->
+          <div class="partial-box-wrapper">
+            <div class="box-header">
+              <span><i class="fa-solid fa-bolt text-warning"></i> Chữ nhận diện tức thì (Interim Streaming):</span>
+            </div>
+            <div id="interimTextBox" class="partial-box">
+              <em>(Bắt đầu nói để thấy chữ xuất hiện theo thời gian thực...)</em>
+            </div>
+          </div>
+
+          <!-- Bảng Phân Tách & Định Danh Người Nói Trực Tiếp (Multi-Speaker Live Panel) -->
+          <div id="liveMultiSpeakerPanel" class="live-multispeaker-panel">
+            <div class="multispeaker-panel-header">
+              <div class="panel-header-left">
+                <i class="fa-solid fa-users-viewfinder text-primary"></i>
+                <span class="panel-title-text">Phân Tách Người Nói Trực Tiếp (Multi-Speaker Live):</span>
+                <span id="liveActiveSpeakerCountBadge" class="badge badge-accent">0 đang nói</span>
+              </div>
+              <div class="panel-header-right">
+                <span class="live-indicator"><i class="fa-solid fa-circle pulse-dot"></i> Live Tracking</span>
+              </div>
+            </div>
+            <div id="liveSpeakersGrid" class="live-speakers-grid">
+              <div id="speakersStandbyPlaceholder" class="speakers-standby-box">
+                <div class="standby-icon-wrap">
+                  <i class="fa-solid fa-users"></i>
+                </div>
+                <div class="standby-text">
+                  <h4>Khung Hiển Thị Nhiều Người Nói Thời Gian Thực</h4>
+                  <p>Hệ thống tự động phát hiện, phân tách và hiển thị thẻ thoại riêng cho từng người nói trong lúc trò chuyện.</p>
+                  <span class="standby-hint"><i class="fa-solid fa-microphone"></i> Bấm <strong>Bắt Đầu Thu Âm</strong> và nói để thấy các thẻ người nói xuất hiện trực tiếp tại đây.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Microphone Finalization Progress Card -->
+          <div id="micProgressCard" class="mic-progress-card" style="display: none;">
+            <div class="progress-card-header">
+              <div class="header-left">
+                <div class="spinner-pulse" id="micProgressSpinner">
+                  <i class="fa-solid fa-circle-notch fa-spin"></i>
+                </div>
+                <div>
+                  <h4 id="micProgressTitle">Đang chốt âm thanh & phân tích người nói...</h4>
+                  <div id="micProgressSubStatus" class="progress-substatus">Khởi chạy SortFormer Diarization & TitaNet Verification...</div>
+                </div>
+              </div>
+              <div class="header-right">
+                <span id="micProgressPercentBadge" class="progress-percent-badge">Đang chạy...</span>
+              </div>
+            </div>
+            <div class="progress-bar-track">
+              <div id="micProgressBar" class="progress-bar-fill progress-indeterminate" style="width: 100%;"></div>
+            </div>
+            <div id="micAlertBanner" class="alert-banner" style="display: none;"></div>
+          </div>
+
+          <!-- Microphone Audio Preview Player (Nghe lại âm thanh đã thu online) -->
+          <div id="micAudioPreviewWrapper" class="media-preview-wrapper" style="display: none; margin-top: 14px; background: var(--card-bg, #1e222d); border: 1px solid var(--card-border, #2d3343); border-radius: 10px; padding: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 13px; font-weight: 600; color: var(--text-primary, #fff); display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-volume-high text-primary"></i> Bản Ghi Âm Trực Tiếp (Online Audio):
+              </span>
+              <a id="btnDownloadMicAudio" href="#" download="recording_online.wav" class="btn btn-outline btn-xs" style="text-decoration: none; padding: 4px 10px; font-size: 12px;">
+                <i class="fa-solid fa-download"></i> Tải file WAV
+              </a>
+            </div>
+            <audio id="micAudioPreview" controls style="width: 100%; border-radius: 6px;"></audio>
+            <div style="font-size: 11px; color: var(--text-muted, #8a94a6); margin-top: 5px;">
+              <i class="fa-solid fa-circle-info"></i> Âm thanh được lưu giữ để nghe lại và kiểm tra kết quả. Sẽ tự động làm mới khi bắt đầu phiên thu âm mới.
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Upload Video / Audio -->
+        <div id="tab-file" class="tab-content">
+          <div class="file-upload-zone" id="dropZone">
+            <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+            <p>Kéo và thả <strong>Video</strong> hoặc <strong>File Âm Thanh</strong> vào đây</p>
+            <span class="file-hint">Hỗ trợ Video (MP4, MKV, AVI, MOV, WEBM) & Âm thanh (WAV, MP3, M4A, FLAC)</span>
+            <input type="file" id="fileInput" accept="video/*,audio/*,.mp4,.mkv,.avi,.mov,.webm,.flv,.wav,.mp3,.m4a,.flac" style="display: none;">
+          </div>
+
+          <div id="fileSelectedInfo" class="file-info-bar" style="display: none;">
+            <div class="file-info-left">
+              <i id="mediaTypeIcon" class="fa-solid fa-file-video text-primary" style="font-size: 20px;"></i>
+              <div class="file-meta">
+                <span id="selectedFileName" class="file-name">filename.mp4</span>
+                <span id="selectedFileSize" class="file-size">0 MB</span>
+              </div>
+            </div>
+            <div class="file-info-actions" style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnProcessFile" class="btn btn-success">
+                <i class="fa-solid fa-play"></i> Bắt Đầu Xử Lý Video
+              </button>
+              <button id="btnCancelProcess" class="btn btn-danger" style="display: none;">
+                <i class="fa-solid fa-ban"></i> Hủy Xử Lý
+              </button>
+            </div>
+          </div>
+
+          <!-- Media Preview (Video / Audio Player) -->
+          <div id="mediaPreviewWrapper" class="media-preview-wrapper" style="display: none;">
+            <video id="videoPreview" controls style="display: none; width: 100%; max-height: 280px; border-radius: 8px; background: #000; margin-top: 10px;"></video>
+            <audio id="audioPreview" controls style="display: none; width: 100%; margin-top: 10px;"></audio>
+          </div>
+
+          <!-- Bảng Tiến Trình Xử Lý Video Offline (Pipeline Progress Stepper) -->
+          <div id="offlineProgressCard" class="offline-progress-card" style="display: none;">
+            <div class="progress-card-header">
+              <div class="header-left">
+                <div class="spinner-pulse" id="progressSpinner">
+                  <i class="fa-solid fa-circle-notch fa-spin"></i>
+                </div>
+                <div>
+                  <h4 id="progressMainTitle">Đang xử lý Video Offline...</h4>
+                  <div id="progressSubStatus" class="progress-substatus">Khởi tạo quy trình phân tích âm học...</div>
+                </div>
+              </div>
+              <div class="header-right" style="display: flex; align-items: center; gap: 10px;">
+                <span id="progressPercentBadge" class="progress-percent-badge">0%</span>
+                <button id="btnCancelProcessHeader" class="btn btn-danger btn-sm" title="Hủy bỏ quá trình xử lý này" style="display: none;">
+                  <i class="fa-solid fa-ban"></i> Hủy
+                </button>
+              </div>
+            </div>
+
+            <!-- Thanh tiến trình chính -->
+            <div class="progress-bar-track">
+              <div id="offlineProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+
+            <!-- Các bước trong Pipeline Stepper -->
+            <div class="pipeline-stepper" id="pipelineStepper">
+              <div class="step-item" id="step-extract" data-step="1">
+                <div class="step-bullet"><i class="fa-solid fa-film"></i></div>
+                <div class="step-info">
+                  <span class="step-name">1. Trích Xuất & Chuẩn Hóa</span>
+                  <span class="step-detail" id="stepDetail-extract">Chờ nạp...</span>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-denoise" data-step="2">
+                <div class="step-bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <div class="step-info">
+                  <span class="step-name">2. Khử Nhiễu (DeepFilterNet3)</span>
+                  <span class="step-detail" id="stepDetail-denoise">Chờ xử lý...</span>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-asr" data-step="3">
+                <div class="step-bullet"><i class="fa-solid fa-microphone-lines"></i></div>
+                <div class="step-info">
+                  <span class="step-name">3. Nhận Dạng (ZipFormer ASR)</span>
+                  <span class="step-detail" id="stepDetail-asr">Chờ giải mã...</span>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-diarization" data-step="4">
+                <div class="step-bullet"><i class="fa-solid fa-users"></i></div>
+                <div class="step-info">
+                  <span class="step-name">4. Phân Tách Người Nói (SortFormer)</span>
+                  <span class="step-detail" id="stepDetail-diarization">Chờ phân đoạn...</span>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-verification" data-step="5">
+                <div class="step-bullet"><i class="fa-solid fa-id-card"></i></div>
+                <div class="step-info">
+                  <span class="step-name">5. Định Danh Giọng Nói (TitaNet)</span>
+                  <span class="step-detail" id="stepDetail-verification">Chờ so khớp...</span>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-punctuation" data-step="6">
+                <div class="step-bullet"><i class="fa-solid fa-font"></i></div>
+                <div class="step-info">
+                  <span class="step-name">6. Dấu Câu (ViBERT-capu)</span>
+                  <span class="step-detail" id="stepDetail-punctuation">Chờ thêm dấu...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Thống kê thời gian và hiệu năng -->
+            <div class="progress-stats-bar">
+              <div class="stat-pill"><i class="fa-solid fa-stopwatch"></i> Thời gian chạy: <strong id="statElapsed">00:00</strong></div>
+              <div class="stat-pill"><i class="fa-solid fa-clock"></i> Thời lượng Media: <strong id="statDuration">--:--</strong></div>
+              <div class="stat-pill"><i class="fa-solid fa-gauge-high"></i> Tốc độ (RTF): <strong id="statSpeed">--</strong></div>
+            </div>
+
+            <!-- Thông báo trạng thái thành công / lỗi trực tiếp trong tiến trình -->
+            <div id="offlineAlertBanner" class="alert-banner" style="display: none; margin-top: 14px;"></div>
+          </div>
+        </div>
+
+        <!-- Results: Final Transcript with Speakers -->
+        <div class="results-section">
+          <div class="results-header">
+            <div class="header-left-title">
+              <h3><i class="fa-solid fa-list-check"></i> Biên Bản Hội Thoại Hoàn Chỉnh (Final with Speaker)</h3>
+              <span id="durationBadge" class="badge badge-info" style="display: none;">Tổng thời lượng: 0s</span>
+            </div>
+            <!-- Nút xuất phụ đề cho Video -->
+            <div class="export-actions" id="exportActions" style="display: none;">
+              <button id="btnExportSrt" class="btn btn-outline btn-xs" title="Tải phụ đề SRT cho Video Player (VLC, YouTube, Premiere)">
+                <i class="fa-solid fa-closed-captioning"></i> Xuất SRT
+              </button>
+              <button id="btnExportVtt" class="btn btn-outline btn-xs" title="Tải WebVTT">
+                <i class="fa-solid fa-file-code"></i> Xuất VTT
+              </button>
+              <button id="btnExportTxt" class="btn btn-outline btn-xs" title="Tải văn bản hội thoại TXT">
+                <i class="fa-solid fa-file-lines"></i> Xuất TXT
+              </button>
+            </div>
+          </div>
+
+          <div id="transcriptFeed" class="transcript-feed">
+            <div class="empty-state">
+              <i class="fa-solid fa-comment-dots"></i>
+              <p>Chưa có dữ liệu hội thoại. Hãy thu âm từ Microphone hoặc tải Video lên để bắt đầu!</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal: Quản lý Hồ sơ Giọng nói -->
+    <div id="modalSpeakers" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-id-badge"></i> Quản Lý Danh Tính Giọng Nói (TitaNet Database)</h3>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="enroll-form">
+            <h4>Đăng ký người nói mới (Voiceprint):</h4>
+            <div class="form-row">
+              <input type="text" id="speakerNameInput" placeholder="Họ và tên (ví dụ: Bác sĩ Minh, Nguyễn Văn A)">
+              <input type="text" id="speakerDescInput" placeholder="Mô tả (tuỳ chọn)">
+            </div>
+            <div class="form-row">
+              <input type="file" id="speakerVoiceFileInput" accept="audio/*,video/*,.mp4,.mkv,.avi,.mov,.webm,.wav,.mp3,.m4a,.flac">
+              <button id="btnEnrollSpeaker" class="btn btn-primary">
+                <i class="fa-solid fa-user-plus"></i> Đăng Ký Voiceprint
+              </button>
+            </div>
+            <!-- Tiến trình Đăng Ký Voiceprint -->
+            <div id="enrollProgressWrapper" class="mini-progress-wrapper" style="display: none; margin-top: 10px;">
+              <div class="mini-progress-label">
+                <span id="enrollProgressStatus"><i class="fa-solid fa-spinner fa-spin"></i> Đang trích xuất voiceprint và ghi vào CSDL...</span>
+              </div>
+              <div class="progress-bar-track mini">
+                <div id="enrollProgressBar" class="progress-bar-fill progress-indeterminate" style="width: 100%;"></div>
+              </div>
+            </div>
+            <div id="speakerModalAlert" class="alert-banner" style="display: none; margin-top: 8px;"></div>
+          </div>
+          <hr class="divider">
+          <h4>Danh sách người nói đã lưu trữ:</h4>
+          <div id="speakersListTable" class="speakers-list">
+            <em>Đang tải danh sách...</em>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Quản lý Hotwords -->
+    <div id="modalHotwords" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-bolt"></i> Quản Lý Từ Khóa Hotwords (ZipFormer Contextual Biasing)</h3>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:0.85rem; color:#64748b; margin-bottom: 14px;">
+            <i class="fa-solid fa-info-circle"></i> <strong>Cơ chế In-Decoding:</strong> Từ khóa được tích hợp trực tiếp vào thuật toán Modified Beam Search của ZipFormer, tự động tăng điểm xác suất (Bonus Score) khi nhận dạng âm học realtime.
+          </p>
+          <div class="hotword-form">
+            <input type="text" id="hwPhraseInput" placeholder="Từ / cụm từ khóa (ví dụ: PARACETAMOL, SORTFORMER, API)">
+            <input type="number" id="hwScoreInput" placeholder="Điểm ưu tiên" value="2.0" step="0.5" min="0.5" max="10.0" style="max-width: 140px;" title="Điểm cộng Bonus Score cho Beam Search">
+            <button id="btnAddHotword" class="btn btn-primary">
+              <i class="fa-solid fa-plus"></i> Thêm Từ Khóa
+            </button>
+          </div>
+          <div id="hotwordProgressWrapper" class="mini-progress-wrapper" style="display: none; margin-bottom: 12px;">
+            <div class="mini-progress-label">
+              <span id="hotwordProgressStatus"><i class="fa-solid fa-spinner fa-spin"></i> Đang nạp từ khóa vào Trie Contextual Biasing...</span>
+            </div>
+            <div class="progress-bar-track mini">
+              <div id="hotwordProgressBar" class="progress-bar-fill progress-indeterminate" style="width: 100%;"></div>
+            </div>
+          </div>
+          <div id="hotwordModalAlert" class="alert-banner" style="display: none; margin-bottom: 12px;"></div>
+          <hr class="divider">
+          <h4>Danh sách từ khóa đang hoạt động trong ZipFormer:</h4>
+          <div id="hotwordsListTable" class="hotwords-list">
+            <em>Đang tải...</em>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Cấu hình thông số Model & Chức năng (AI Hyperparameters) -->
+    <div id="modalModelSettings" class="modal">
+      <div class="modal-content modal-content-lg">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-sliders"></i> Cấu Hình Thông Số Cho Từng Model & Chức Năng</h3>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-sub-desc">
+            <i class="fa-solid fa-circle-info"></i> Tinh chỉnh trực tiếp các siêu tham số (thresholds, collar, beam search paths, denoise limit) của các mô hình AI đang chạy mà không cần khởi động lại máy chủ.
+          </p>
+
+          <div id="modelSettingsProgressWrapper" class="mini-progress-wrapper" style="display: none; margin-bottom: 12px;">
+            <div class="mini-progress-label">
+              <span id="modelSettingsProgressStatus"><i class="fa-solid fa-spinner fa-spin"></i> Đang cập nhật thông số mô hình...</span>
+            </div>
+            <div class="progress-bar-track mini">
+              <div id="modelSettingsProgressBar" class="progress-bar-fill progress-indeterminate" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <div id="modelSettingsAlert" class="alert-banner" style="display: none; margin-bottom: 14px;"></div>
+
+          <!-- Dynamic Form Container -->
+          <form id="formModelSettings" class="model-settings-form">
+            <div id="modelSettingsGroupsContainer" class="settings-groups-container">
+              <div class="settings-loading-placeholder">
+                <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+                <p>Đang nạp danh mục thông số từ hệ thống...</p>
+              </div>
+            </div>
+
+            <div class="modal-action-bar">
+              <button type="button" id="btnResetModelSettings" class="btn btn-outline">
+                <i class="fa-solid fa-rotate-left"></i> Khôi Phục Mặc Định
+              </button>
+              <div class="action-buttons-right">
+                <button type="button" class="btn btn-secondary close-modal-btn">Đóng</button>
+                <button type="submit" id="btnSaveModelSettings" class="btn btn-primary">
+                  <i class="fa-solid fa-floppy-disk"></i> Lưu & Áp Dụng Ngay
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notifications Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/static/app.js?v=5.2"></script>
+</body>
+</html>
