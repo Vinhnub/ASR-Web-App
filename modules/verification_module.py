@@ -123,7 +123,9 @@ class VerificationModule:
                 if matched_name != "Unknown":
                     identity_map[spk] = (matched_name, sim_score)
                 else:
-                    identity_map[spk] = (f"Chưa đăng ký ({spk})", sim_score)
+                    spk_num = spk.replace("speaker_", "")
+                    display_label = f"Người nói {int(spk_num) + 1 if spk_num.isdigit() else spk} (Chưa đăng ký)"
+                    identity_map[spk] = (display_label, sim_score)
             except Exception as e:
                 print(f"[VerificationModule] Lỗi khi nhận diện {spk}: {e}")
                 identity_map[spk] = (spk, 0.0)
@@ -154,10 +156,29 @@ class VerificationModule:
             if matched_name != "Unknown":
                 return (matched_name, float(sim_score))
             else:
-                return ("Chưa đăng ký", float(sim_score))
+                return ("Unknown", float(sim_score))
         except Exception as e:
             print(f"[VerificationModule] Lỗi identify_single_speaker: {e}")
             return ("Unknown", 0.0)
+
+    def extract_embedding(self, audio_pcm: np.ndarray, sample_rate: int = 16000) -> Optional[np.ndarray]:
+        """
+        Trích xuất trực tiếp vector Voiceprint (192 chiều, chuẩn hóa L2) cho một đoạn âm thanh.
+        Phục vụ cơ chế Dynamic In-Session Speaker Tracking thời gian thực.
+        """
+        if not self.enabled or self.recognizer is None or audio_pcm is None:
+            return None
+        if len(audio_pcm) < int(0.3 * sample_rate):
+            return None
+        try:
+            emb = self.recognizer.extract_embedding(audio_pcm, sample_rate=sample_rate)
+            norm = np.linalg.norm(emb)
+            if norm > 1e-6:
+                emb = emb / norm
+            return emb
+        except Exception as e:
+            print(f"[VerificationModule] Lỗi extract_embedding: {e}")
+            return None
 
     def enroll(self, name: str, audio_pcm: np.ndarray, sample_rate: int = 16000, description: str = ""):
         """Đăng ký hồ sơ giọng nói mới."""

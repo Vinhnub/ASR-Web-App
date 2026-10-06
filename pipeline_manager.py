@@ -35,7 +35,7 @@ except Exception:
 try:
     from .config import PipelineConfig
     from .modules.denoise_module import DenoiseModule
-    from .modules.asr_module import ASRModule
+    from .modules.asr_module import ASRModule, OfflineASRModule
     from .modules.diarization_module import DiarizationModule
     from .modules.verification_module import VerificationModule
     from .modules.hotword_module import HotwordModule
@@ -43,7 +43,7 @@ try:
 except ImportError:
     from config import PipelineConfig
     from modules.denoise_module import DenoiseModule
-    from modules.asr_module import ASRModule
+    from modules.asr_module import ASRModule, OfflineASRModule
     from modules.diarization_module import DiarizationModule
     from modules.verification_module import VerificationModule
     from modules.hotword_module import HotwordModule
@@ -121,6 +121,17 @@ class StreamingSession:
         self.last_processed_word_count: int = 0
         self.confirmed_segs: List[Any] = []
 
+        # Trạng thái 2-Pass Streaming ASR cuốn chiếu (Nemotron VAD + ZipFormer-150M)
+        self.committed_turns: List[Dict[str, Any]] = []
+        self.last_committed_sample: int = 0
+        self.current_open_turn_id: Optional[str] = None
+        self.current_open_speaker: Optional[str] = None
+        self.current_open_raw_speaker: Optional[str] = None
+        self.last_active_speaker_id: Optional[str] = None
+
+        # Trạng thái Dynamic In-Session Voiceprint Tracking (TitaNet 192-dim)
+        self.speaker_embeddings: Dict[str, np.ndarray] = {}
+
     def add_chunk(self, raw_chunk: np.ndarray, clean_chunk: Optional[np.ndarray] = None):
         """Lưu trữ mảng PCM thô và mảng PCM đã khử nhiễu từ microphone client."""
         self.raw_audio_chunks.append(raw_chunk)
@@ -193,6 +204,14 @@ class RealtimePipelineManager:
             enabled=self.config.enable_asr,
         )
 
+        # 3.1 Khởi tạo Offline ASR Module cho chế độ Upload/Offline (Zipformer-150M)
+        self.offline_asr = OfflineASRModule(
+            model_dir=os.path.join(app_dir, "zipformer_offline_vi"),
+            num_threads=self.config.asr_threads,
+            provider="cpu",
+            enabled=self.config.enable_asr,
+        )
+
         # 4. Khởi tạo Diarization Module (SortFormer)
         self.diarization = DiarizationModule(
             model_name=self.config.diarization_model,
@@ -234,11 +253,24 @@ class RealtimePipelineManager:
         v_dur = params.get("min_speech_duration_for_id")
         self.verification.set_parameters(threshold=v_th, min_speech_duration=v_dur)
 
-        # 2. Diarization (SortFormer)
+        # 2. Diarization (SortFormer / Nemotron-3)
         d_col = params.get("diarization_collar")
         d_min = params.get("diarization_min_duration")
         d_chunk = params.get("diarization_chunk_len")
-        self.diarization.set_parameters(collar=d_col, min_duration=d_min, chunk_len=d_chunk)
+        d_model = params.get("diarization_model")
+        
+        if d_model and d_model != self.diarization.model_name:
+            print(f"[PipelineManager] Phát hiện thay đổi mô hình Diarization sang {d_model}. Đang khởi tạo lại...")
+            self.diarization = DiarizationModule(
+                model_name=d_model,
+                device=self.config.device,
+                chunk_len=d_chunk if d_chunk else self.config.diarization_chunk_len,
+                collar=d_col if d_col else self.config.diarization_collar,
+                min_duration=d_min if d_min else self.config.diarization_min_duration,
+                enabled=self.config.enable_diarization,
+            )
+        else:
+            self.diarization.set_parameters(collar=d_col, min_duration=d_min, chunk_len=d_chunk)
 
         # 3. ASR & Hotwords (ZipFormer)
         a_dec = params.get("asr_decoding_method")
@@ -297,7 +329,7 @@ class RealtimePipelineManager:
                 },
                 {
                     "id": "diarization",
-                    "title": "Phân Đoạn Người Nói (Streaming SortFormer)",
+                    "title": "Phân Đoạn Người Nói (Diarization)",
                     "icon": "fa-users-viewfinder",
                     "params": [
                         {
@@ -310,6 +342,17 @@ class RealtimePipelineManager:
                             "default": 0.25,
                             "unit": "s",
                             "description": "Khoảng cách thời gian tối đa (giây) giữa 2 đoạn cùng người nói để tự động gộp thành một lượt phát biểu liên tục."
+                        },
+                        {
+                            "key": "diarization_model",
+                            "label": "Mô Hình Phân Đoạn (Diarization Model)",
+                            "type": "select",
+                            "options": [
+                                {"value": "nvidia/Nemotron-3-Diarization", "label": "Nemotron-3 (Chính xác cao, nhiều speakers)"},
+                                {"value": "nvidia/diar_streaming_sortformer_4spk-v2.1", "label": "SortFormer (Tối đa 4 speakers, nhanh gọn)"}
+                            ],
+                            "default": "nvidia/Nemotron-3-Diarization",
+                            "description": "Lựa chọn mô hình cho Diarization."
                         },
                         {
                             "key": "diarization_min_duration",
@@ -426,6 +469,24 @@ class RealtimePipelineManager:
                             "default": 7,
                             "unit": "s",
                             "description": "Nếu một người không phát biểu quá khoảng thời gian này, khung phát biểu sẽ tự động ẩn đi để nhường không gian cho người đang nói."
+                        },
+                        {
+                            "key": "enable_2pass_streaming",
+                            "label": "Bật Chốt Lượt Cuốn Chiếu (2-Pass ZipFormer-150M)",
+                            "type": "toggle",
+                            "default": True,
+                            "description": "Tự động chốt từng lượt phát biểu bằng ZipFormer-150M khi người nói tạm dừng, nối tăng dần chữ theo thời gian thực."
+                        },
+                        {
+                            "key": "turn_silence_timeout_s",
+                            "label": "Ngưỡng Im Lặng Chốt Lượt (Silence Timeout)",
+                            "type": "slider",
+                            "min": 0.4,
+                            "max": 2.0,
+                            "step": 0.1,
+                            "default": 0.7,
+                            "unit": "s",
+                            "description": "Khoảng thời gian im lặng tối thiểu để hệ thống xác nhận người nói đã tạm dừng ý và kích hoạt chốt ZipFormer-150M."
                         }
                     ]
                 }
@@ -446,6 +507,9 @@ class RealtimePipelineManager:
             "realtime_diarization_interval_s": self.config.realtime_diarization_interval_s,
             "max_recent_words_per_speaker": self.config.max_recent_words_per_speaker,
             "speaker_inactivity_timeout_s": self.config.speaker_inactivity_timeout_s,
+            "enable_2pass_streaming": self.config.enable_2pass_streaming,
+            "turn_silence_timeout_s": self.config.turn_silence_timeout_s,
+            "turn_min_speech_s": self.config.turn_min_speech_s,
         }
         if options_override:
             options.update(options_override)
@@ -502,6 +566,18 @@ class RealtimePipelineManager:
         # Cập nhật đệm lịch sử cho chunk kế tiếp
         session.prev_denoise_tail = chunk_pcm[-buffer_len:] if len(chunk_pcm) >= buffer_len else np.concatenate([prev_tail[len(chunk_pcm):], chunk_pcm])
         return clean_chunk
+
+    def _get_speaker_display_identity(self, session: StreamingSession, spk_id: str) -> Tuple[str, float]:
+        """Trả về (display_name, confidence_score) phân biệt rõ ràng cho từng người nói."""
+        if spk_id in session.speaker_identities:
+            name, score = session.speaker_identities[spk_id]
+            if name and name != "Unknown" and name != "Chưa đăng ký":
+                return name, score
+
+        # Tạo nhãn phân biệt mặc định theo mã speaker (ví dụ: Người nói 1 (Chưa đăng ký))
+        spk_num = spk_id.replace("speaker_", "")
+        display_label = f"Người nói {int(spk_num) + 1 if spk_num.isdigit() else spk_id} (Chưa đăng ký)"
+        return display_label, 0.0
 
     def process_streaming_chunk(
         self,
@@ -564,9 +640,10 @@ class RealtimePipelineManager:
                 "realtime_diarization": False,
             }
 
-        # Chế độ mới: Real-time Multi-Speaker Diarization & Verification
+        # Chế độ mới: Real-time Multi-Speaker Diarization & Verification & 2-Pass ZipFormer-150M Commits
         interval_samples = int(opts.get("realtime_diarization_interval_s", self.config.realtime_diarization_interval_s) * sample_rate)
         now = time.time()
+        turn_event = None
 
         if (
             session.total_samples - session.last_diarize_sample_count >= interval_samples
@@ -586,18 +663,107 @@ class RealtimePipelineManager:
 
             d_col = opts.get("diarization_collar", self.config.diarization_collar)
             d_min = opts.get("diarization_min_duration", self.config.diarization_min_duration)
-            window_segs = self.diarization.diarize_audio_numpy(eval_audio, sample_rate=sample_rate, collar=d_col, min_duration=d_min)
+            silence_timeout_s = float(opts.get("turn_silence_timeout_s", self.config.turn_silence_timeout_s))
+
+            # Phát hiện hoạt động giọng nói (VAD) và phân đoạn
+            vad_res = self.diarization.detect_vad_activity(
+                eval_audio,
+                sample_rate=sample_rate,
+                silence_threshold_s=silence_timeout_s
+            )
+            window_segs = vad_res.get("segments", [])
+            is_speaking = vad_res.get("is_speaking", True)
+            silence_duration_s = vad_res.get("silence_duration_s", 0.0)
+            last_speech_end = vad_res.get("last_speech_end", 0.0) + eval_offset
+
+            speaker_changed = False
+            change_transition_sample = None
+            prev_speaker_for_commit = None
 
             if window_segs:
                 for seg in window_segs:
                     seg.start += eval_offset
                     seg.end += eval_offset
 
+                # -------------------------------------------------------------
+                # DYNAMIC IN-SESSION VOICEPRINT TRACKING (NVIDIA TitaNet 192-dim)
+                # Khóa danh tính người nói liên tục, chống triệt để lỗi reset nhầm speaker
+                # khi người nói trước trôi ra ngoài cửa sổ đánh giá cục bộ 20s
+                # -------------------------------------------------------------
+                if self.verification.enabled:
+                    track_th = opts.get("speaker_tracking_threshold", self.config.speaker_tracking_threshold)
+                    local_spk_clips = {}
+                    for seg in window_segs:
+                        s_idx = max(0, int((seg.start - eval_offset) * sample_rate))
+                        e_idx = min(len(eval_audio), int((seg.end - eval_offset) * sample_rate))
+                        if e_idx > s_idx:
+                            clip = eval_audio[s_idx:e_idx]
+                            if seg.speaker not in local_spk_clips:
+                                local_spk_clips[seg.speaker] = []
+                            local_spk_clips[seg.speaker].append(clip)
+
+                    local_to_global_map = {}
+                    for loc_spk, clips in local_spk_clips.items():
+                        full_clip = np.concatenate(clips, axis=0) if clips else None
+                        if full_clip is not None and len(full_clip) >= int(0.4 * sample_rate):
+                            cur_emb = self.verification.extract_embedding(full_clip, sample_rate=sample_rate)
+                            if cur_emb is not None:
+                                best_g = None
+                                best_sim = -1.0
+                                for g_spk, g_emb in session.speaker_embeddings.items():
+                                    sim = float(np.dot(cur_emb, g_emb))
+                                    if sim > best_sim:
+                                        best_sim = sim
+                                        best_g = g_spk
+
+                                if best_g is not None and best_sim >= track_th:
+                                    local_to_global_map[loc_spk] = best_g
+                                    # Cập nhật centroid embedding làm mịn dần theo thời gian
+                                    updated_emb = 0.8 * session.speaker_embeddings[best_g] + 0.2 * cur_emb
+                                    norm = np.linalg.norm(updated_emb)
+                                    if norm > 1e-6:
+                                        session.speaker_embeddings[best_g] = updated_emb / norm
+                                else:
+                                    new_g = f"speaker_{len(session.speaker_embeddings)}"
+                                    session.speaker_embeddings[new_g] = cur_emb
+                                    local_to_global_map[loc_spk] = new_g
+                                    print(f"[Speaker Tracker] Đăng ký người nói mới trong phiên: {new_g} (best_sim: {best_sim:.3f})")
+
+                    if local_to_global_map:
+                        for seg in window_segs:
+                            if seg.speaker in local_to_global_map:
+                                seg.speaker = local_to_global_map[seg.speaker]
+
                 session.confirmed_segs = window_segs
 
                 # Người nói ở phân đoạn phát biểu gần nhất
                 active_seg = window_segs[-1]
                 active_spk = active_seg.speaker
+
+                # Phát hiện thay đổi người nói giữa các lượt phát biểu
+                prev_spk = session.last_active_speaker_id
+                if prev_spk is None:
+                    session.last_active_speaker_id = active_spk
+                elif prev_spk != active_spk:
+                    speaker_changed = True
+                    prev_speaker_for_commit = prev_spk
+
+                    # Xác định điểm chuyển giao: mốc bắt đầu của phân đoạn speaker mới sau điểm đã chốt
+                    active_starts = [
+                        seg.start for seg in window_segs
+                        if seg.speaker == active_spk and (seg.start * sample_rate) >= session.last_committed_sample
+                    ]
+                    if active_starts:
+                        change_transition_sample = int(active_starts[0] * sample_rate)
+                    else:
+                        prev_ends = [seg.end for seg in window_segs if seg.speaker == prev_spk]
+                        if prev_ends:
+                            change_transition_sample = int(prev_ends[-1].end * sample_rate)
+                        else:
+                            change_transition_sample = len(clean_audio)
+
+                    change_transition_sample = max(session.last_committed_sample, min(len(clean_audio), change_transition_sample))
+
                 session.active_speaker_id = active_spk
                 session.speaker_last_active_time[active_spk] = now
 
@@ -626,18 +792,143 @@ class RealtimePipelineManager:
                                 if spk_clips:
                                     spk_audio = np.concatenate(spk_clips)
                                     name, sim = self.verification.identify_single_speaker(spk_audio, sample_rate=sample_rate, threshold=v_th)
-                                    if name != "Unknown":
+                                    if name != "Unknown" and name != "Chưa đăng ký":
                                         if sim > curr_score:
                                             session.speaker_identities[spk] = (name, sim)
                                             print(f"[Realtime ID Nâng Cấp] {spk} -> {name} (score: {sim:.3f}, tích lũy: {spk_dur:.1f}s)")
                                     else:
-                                        if curr_name == "Unknown":
-                                            session.speaker_identities[spk] = (f"Chưa đăng ký ({spk})", sim)
+                                        if curr_name == "Unknown" or curr_name == "Chưa đăng ký":
+                                            spk_num = spk.replace("speaker_", "")
+                                            display_label = f"Người nói {int(spk_num) + 1 if spk_num.isdigit() else spk} (Chưa đăng ký)"
+                                            session.speaker_identities[spk] = (display_label, sim)
 
                 # Cập nhật nhãn hiển thị cho người đang nói
-                name, score = session.speaker_identities.get(active_spk, (active_spk, 0.0))
+                name, score = self._get_speaker_display_identity(session, active_spk)
                 session.active_identity = name
                 session.active_confidence = score
+
+            # -----------------------------------------------------------------
+            # 2-Pass Incremental ASR: Chốt cuốn chiếu bằng ZipFormer-150M
+            # -----------------------------------------------------------------
+            enable_2pass = opts.get("enable_2pass_streaming", self.config.enable_2pass_streaming)
+            min_speech_s = float(opts.get("turn_min_speech_s", self.config.turn_min_speech_s))
+
+            if enable_2pass and self.offline_asr.enabled and len(clean_audio) > session.last_committed_sample:
+                uncommitted_samples = len(clean_audio) - session.last_committed_sample
+                uncommitted_s = uncommitted_samples / sample_rate
+
+                should_commit = False
+                force_close_turn = False
+                commit_spk_id = session.active_speaker_id
+                cut_end_sample = len(clean_audio)
+
+                # Trường hợp 1: Phát hiện đổi người nói (Speaker Change) -> chốt ngay lời của người nói trước
+                if speaker_changed and prev_speaker_for_commit and change_transition_sample is not None:
+                    prev_uncommitted_samples = change_transition_sample - session.last_committed_sample
+                    if prev_uncommitted_samples >= int(min_speech_s * sample_rate):
+                        should_commit = True
+                        force_close_turn = True
+                        commit_spk_id = prev_speaker_for_commit
+                        cut_end_sample = change_transition_sample
+                    else:
+                        session.last_committed_sample = max(session.last_committed_sample, change_transition_sample)
+                        session.current_open_turn_id = None
+                        session.current_open_speaker = None
+                        session.current_open_raw_speaker = None
+                    session.last_active_speaker_id = session.active_speaker_id
+
+                # Trường hợp 2: Người nói ngắt quãng (im lặng >= silence_timeout_s)
+                elif not is_speaking and silence_duration_s >= silence_timeout_s:
+                    speech_end_sample = int(last_speech_end * sample_rate) + int(0.15 * sample_rate)
+                    # Chỉ commit khi còn âm thanh giọng nói mới chưa chốt
+                    if speech_end_sample > session.last_committed_sample and (speech_end_sample - session.last_committed_sample) >= int(min_speech_s * sample_rate):
+                        should_commit = True
+                        # Chỉ đóng hẳn lượt khi khoảng im lặng dài (>= 3.5s)
+                        # Nếu chỉ ngắt nghỉ lấy hơi (< 3.5s), giữ mở turn để gộp các câu liên tiếp của cùng người nói
+                        force_close_turn = (silence_duration_s >= 3.5)
+                        cut_end_sample = min(len(clean_audio), speech_end_sample)
+                        commit_spk_id = session.active_speaker_id
+                    else:
+                        if silence_duration_s >= 3.5:
+                            session.current_open_turn_id = None
+                            session.current_open_speaker = None
+                            session.current_open_raw_speaker = None
+
+                # Trường hợp 3: Đang nói liên tục dài (>= 8.0s) -> commit định kỳ để tránh dồn ứ
+                elif is_speaking and uncommitted_s >= 8.0:
+                    should_commit = True
+                    force_close_turn = False
+                    cut_end_sample = len(clean_audio)
+                    commit_spk_id = session.active_speaker_id
+
+                if should_commit and (cut_end_sample - session.last_committed_sample) >= int(min_speech_s * sample_rate):
+                    slice_pcm = clean_audio[session.last_committed_sample : cut_end_sample]
+                    slice_start_s = session.last_committed_sample / sample_rate
+                    slice_end_s = cut_end_sample / sample_rate
+                    session.last_committed_sample = cut_end_sample
+
+                    try:
+                        slice_res = self.offline_asr.process_full_audio(slice_pcm, sample_rate=sample_rate)
+                        slice_raw_text = (slice_res.get("text") or "").strip()
+                    except Exception as asr_err:
+                        print(f"[PipelineManager 2-Pass] Lỗi giải mã ZipFormer-150M: {asr_err}")
+                        slice_raw_text = ""
+
+                    if slice_raw_text:
+                        spk_id = commit_spk_id
+                        display_name, score = self._get_speaker_display_identity(session, spk_id)
+
+                        # Kiểm tra xem có cùng người nói với turn đang mở hay không
+                        is_same_speaker = (
+                            session.current_open_turn_id is not None
+                            and session.current_open_raw_speaker == spk_id
+                            and len(session.committed_turns) > 0
+                        )
+
+                        if is_same_speaker:
+                            curr_turn = session.committed_turns[-1]
+                            curr_turn["raw_text"] = f"{curr_turn['raw_text']} {slice_raw_text}".strip()
+                            curr_turn["text"] = format_natural_text(curr_turn["raw_text"])
+                            curr_turn["end"] = round(slice_end_s, 2)
+                            curr_turn["speaker"] = display_name
+                            curr_turn["score"] = round(score, 3)
+                            turn_event = {
+                                "action": "turn_update",
+                                "turn_id": curr_turn["turn_id"],
+                                "speaker": curr_turn["speaker"],
+                                "raw_speaker": curr_turn["raw_speaker"],
+                                "score": curr_turn["score"],
+                                "text": curr_turn["text"],
+                                "start": curr_turn["start"],
+                                "end": curr_turn["end"],
+                            }
+                        else:
+                            new_turn_id = f"turn_{int(time.time() * 1000) % 1000000}_{uuid.uuid4().hex[:4]}"
+                            new_turn = {
+                                "turn_id": new_turn_id,
+                                "speaker": display_name,
+                                "raw_speaker": spk_id,
+                                "score": round(score, 3),
+                                "raw_text": slice_raw_text,
+                                "text": format_natural_text(slice_raw_text),
+                                "start": round(slice_start_s, 2),
+                                "end": round(slice_end_s, 2),
+                            }
+                            session.committed_turns.append(new_turn)
+                            session.current_open_turn_id = new_turn_id
+                            session.current_open_speaker = display_name
+                            session.current_open_raw_speaker = spk_id
+                            turn_event = {
+                                "action": "turn_new",
+                                **new_turn
+                            }
+
+                        if force_close_turn:
+                            # Đóng lượt của người nói trước khi có sự kiện đổi người nói hoặc khoảng nghỉ dài
+                            session.current_open_turn_id = None
+                            session.current_open_speaker = None
+                            session.current_open_raw_speaker = None
+
 
         # Phân bổ từ ngữ theo mốc thời gian thực (Timestamp-Based Alignment)
         # Giúp 100% bảo toàn âm thanh đầu / chữ đầu khi có speaker mới bắt đầu phát biểu
@@ -677,11 +968,18 @@ class RealtimePipelineManager:
 
         speakers_list = []
         for spk in all_speakers_keys:
-            name, score = session.speaker_identities.get(spk, (spk, 0.0))
+            name, score = self._get_speaker_display_identity(session, spk)
             last_time = session.speaker_last_active_time.get(spk, now)
             last_ago = max(0.0, now - last_time)
             is_speaking = (spk == session.active_speaker_id) and (last_ago <= 1.5)
             is_expired = last_ago > inactivity_timeout
+
+            # Lấy câu phát biểu đã chốt hoàn chỉnh gần nhất của người này (nếu có)
+            latest_turn_text = ""
+            for t in reversed(session.committed_turns):
+                if t.get("raw_speaker") == spk or t.get("speaker") == name:
+                    latest_turn_text = t.get("text", "")
+                    break
 
             spk_words = session.speaker_words.get(spk, [])
             if max_words > 0 and len(spk_words) > max_words:
@@ -690,6 +988,14 @@ class RealtimePipelineManager:
                 recent_words = spk_words
 
             raw_spk_text = " ".join(recent_words)
+            # Nếu người nói đã dừng nói và có câu đã chốt chuẩn xác, ưu tiên dùng câu hoàn chỉnh
+            if latest_turn_text and (not is_speaking or not raw_spk_text):
+                display_spk_text = latest_turn_text
+            elif raw_spk_text:
+                display_spk_text = format_natural_text(raw_spk_text)
+            else:
+                display_spk_text = latest_turn_text
+
             speakers_list.append({
                 "speaker_id": spk,
                 "name": name,
@@ -697,7 +1003,7 @@ class RealtimePipelineManager:
                 "is_speaking": is_speaking,
                 "is_expired": is_expired,
                 "last_active_ago": round(last_ago, 1),
-                "recent_text": format_natural_text(raw_spk_text),
+                "recent_text": display_spk_text,
                 "total_words": len(spk_words)
             })
 
@@ -709,7 +1015,20 @@ class RealtimePipelineManager:
             "realtime_diarization": True,
             "active_speaker": session.active_identity,
             "active_speaker_id": session.active_speaker_id,
-            "speakers": speakers_list
+            "speakers": speakers_list,
+            "turn_event": turn_event,
+            "committed_turns": [
+                {
+                    "turn_id": t["turn_id"],
+                    "speaker": t["speaker"],
+                    "raw_speaker": t.get("raw_speaker", "speaker_0"),
+                    "score": t.get("score", 1.0),
+                    "text": t["text"],
+                    "start": t["start"],
+                    "end": t["end"],
+                }
+                for t in session.committed_turns
+            ]
         }
 
     def finalize_session(self, session_id: str) -> Dict[str, Any]:
@@ -747,81 +1066,150 @@ class RealtimePipelineManager:
         else:
             clean_audio = full_raw_audio
 
-        # 3. Thu nhận văn bản hoàn chỉnh từ ASR kèm tokens & timestamps
-        raw_text = ""
-        words = []
-        if opts.get("asr", True) and self.asr.enabled and session.asr_stream is not None:
-            stream_info = self.asr.finish_stream_with_timestamps(session.asr_stream)
-            raw_text = stream_info.get("text", "")
-            tokens = stream_info.get("tokens", [])
-            timestamps = stream_info.get("timestamps", [])
-            if tokens and timestamps:
-                words = self.asr.extract_words_from_tokens(tokens, timestamps)
-                
-            # Khắc phục lỗi Sherpa-ONNX giới hạn buffer / token ở các luồng cực dài (> 3-4 phút)
-            if session.all_words_history and len(session.all_words_history) > len(words) + 10:
-                words = session.all_words_history.copy()
-                raw_text = " ".join([w["word"] for w in words])
-            elif len(session.current_partial_text) > len(raw_text) + 20:
-                raw_text = session.current_partial_text
+        enable_2pass = opts.get("enable_2pass_streaming", self.config.enable_2pass_streaming)
+        can_instant_finalize = enable_2pass and (len(session.committed_turns) > 0 or session.duration_seconds < 3.0)
+
+        if can_instant_finalize:
+            # -----------------------------------------------------------------
+            # CHẾ ĐỘ 1: KẾ THỪA TRỰC TIẾP TỪ REALTIME 2-PASS (INSTANT FINALIZE < 200ms)
+            # Tái sử dụng 100% committed_turns và danh tính đã khóa trong lúc realtime!
+            # -----------------------------------------------------------------
+            if session.asr_stream is not None:
+                try:
+                    self.asr.finish_stream(session.asr_stream)
+                except Exception:
+                    pass
+
+            # Xử lý phần âm thanh đuôi còn lại (Tail Audio) bằng ZipFormer-150M nếu có
+            if self.offline_asr.enabled and len(clean_audio) > session.last_committed_sample:
+                rem_pcm = clean_audio[session.last_committed_sample :]
+                if len(rem_pcm) >= int(0.25 * 16000):
+                    try:
+                        rem_res = self.offline_asr.process_full_audio(rem_pcm, sample_rate=16000)
+                        rem_text = (rem_res.get("text") or "").strip()
+                        if rem_text:
+                            spk_id = session.active_speaker_id
+                            display_name, score = self._get_speaker_display_identity(session, spk_id)
+                            # Nếu cùng người nói với turn cuối thì gộp vào
+                            if (
+                                session.committed_turns
+                                and session.current_open_raw_speaker == spk_id
+                            ):
+                                session.committed_turns[-1]["raw_text"] = f"{session.committed_turns[-1]['raw_text']} {rem_text}".strip()
+                                session.committed_turns[-1]["end"] = round(total_duration, 2)
+                            else:
+                                session.committed_turns.append({
+                                    "turn_id": f"turn_final_{uuid.uuid4().hex[:4]}",
+                                    "speaker": display_name,
+                                    "raw_speaker": spk_id,
+                                    "score": round(score, 3),
+                                    "raw_text": rem_text,
+                                    "text": format_natural_text(rem_text),
+                                    "start": round(session.last_committed_sample / 16000.0, 2),
+                                    "end": round(total_duration, 2),
+                                })
+                    except Exception as rem_err:
+                        print(f"[Instant Finalize] Lỗi xử lý đoạn audio đuôi: {rem_err}")
+
+            # Kế thừa 100% các lượt nói từ Realtime & Hậu xử lý ViBERT-capu
+            formatted_segments = []
+            final_turn_texts = []
+            for turn in session.committed_turns:
+                raw_spk = turn.get("raw_speaker", "speaker_0")
+                display_name, score = self._get_speaker_display_identity(session, raw_spk)
+                turn["speaker"] = display_name
+                turn["score"] = round(score, 3)
+
+                raw_t = turn.get("raw_text", "").strip()
+                if not raw_t:
+                    continue
+
+                if opts.get("punctuation", True) and self.punctuation.enabled:
+                    punc_text = self.punctuation.punctuate(raw_t)
+                else:
+                    punc_text = format_natural_text(raw_t)
+
+                turn["text"] = punc_text
+                final_turn_texts.append(punc_text)
+                formatted_segments.append({
+                    "turn_id": turn.get("turn_id"),
+                    "start": turn["start"],
+                    "end": turn["end"],
+                    "speaker": turn["speaker"],
+                    "raw_speaker": raw_spk,
+                    "score": turn.get("score", 1.0),
+                    "text": punc_text
+                })
+
+            final_text = " ".join(final_turn_texts)
+            raw_text = " ".join([t.get("raw_text", "") for t in session.committed_turns])
+
         else:
-            raw_text = session.current_partial_text
-
-        # Bảo vệ chống mất từ: Fallback về current_partial_text nếu finish_stream trả về chuỗi rỗng
-        if not raw_text.strip() and session.current_partial_text:
-            raw_text = session.current_partial_text
-
-        # 4. Hậu xử lý văn bản: Automatic Punctuation (ViBERT-capu)
-        if opts.get("punctuation", True) and self.punctuation.enabled and raw_text:
-            final_text = self.punctuation.punctuate(raw_text)
-        else:
-            final_text = format_natural_text(raw_text)
-
-        # 5. Phân đoạn người nói (SortFormer Diarization)
-        if opts.get("diarization", True) and self.diarization.enabled and len(clean_audio) > 0:
-            d_col = opts.get("diarization_collar", self.config.diarization_collar)
-            d_min = opts.get("diarization_min_duration", self.config.diarization_min_duration)
-            segments = self.diarization.diarize_audio(clean_audio, sample_rate=16000, collar=d_col, min_duration=d_min)
-        else:
-            segments = [SpeakerSegment(start=0.0, end=round(total_duration, 3), speaker="speaker_0", confidence=1.0)]
-
-        # 6. Định danh người nói (TitaNet Speaker Verification)
-        if opts.get("verification", True) and self.verification.enabled and len(clean_audio) > 0:
-            v_th = opts.get("verification_threshold", self.config.verification_threshold)
-            id_map = self.verification.resolve_identities(clean_audio, segments, sample_rate=16000, threshold=v_th)
-        else:
-            unique_spks = set(s.speaker for s in segments)
-            id_map = {spk: (spk, 1.0) for spk in unique_spks}
-
-        # Kế thừa các danh tính đã được nhận diện trong luồng realtime nếu có
-        for spk, (name, sc) in session.speaker_identities.items():
-            if spk in id_map:
-                curr_name, _ = id_map[spk]
-                if curr_name.startswith("Chưa đăng ký") and not name.startswith("Chưa đăng ký"):
-                    id_map[spk] = (name, sc)
+            # -----------------------------------------------------------------
+            # CHẾ ĐỘ 2 (FALLBACK): Dành cho phiên không bật 2-Pass hoặc không có committed_turns
+            # -----------------------------------------------------------------
+            raw_text = ""
+            words = []
+            if opts.get("asr", True) and self.asr.enabled and session.asr_stream is not None:
+                stream_info = self.asr.finish_stream_with_timestamps(session.asr_stream)
+                raw_text = stream_info.get("text", "")
+                tokens = stream_info.get("tokens", [])
+                timestamps = stream_info.get("timestamps", [])
+                if tokens and timestamps:
+                    words = self.asr.extract_words_from_tokens(tokens, timestamps)
+                if session.all_words_history and len(session.all_words_history) > len(words) + 10:
+                    words = session.all_words_history.copy()
+                    raw_text = " ".join([w["word"] for w in words])
+                elif len(session.current_partial_text) > len(raw_text) + 20:
+                    raw_text = session.current_partial_text
             else:
-                id_map[spk] = (name, sc)
+                raw_text = session.current_partial_text
 
-        # 7. Ghép nhãn người nói vào kết quả văn bản (Chuẩn xác 100% theo từ & timestamp của luồng ASR)
-        formatted_segments = self._align_text_with_speakers(
-            full_audio=clean_audio,
-            final_text=final_text,
-            segments=segments,
-            id_map=id_map,
-            total_duration=total_duration,
-            options=opts,
-            sample_rate=16000,
-            words=words
-        )
-        if not formatted_segments and final_text and final_text.strip():
-            formatted_segments = [{
-                "start": 0.0,
-                "end": round(total_duration, 2),
-                "speaker": "Người nói",
-                "raw_speaker": "speaker_0",
-                "score": 1.0,
-                "text": final_text
-            }]
+            if not raw_text.strip() and session.current_partial_text:
+                raw_text = session.current_partial_text
+
+            if opts.get("punctuation", True) and self.punctuation.enabled and raw_text:
+                final_text = self.punctuation.punctuate(raw_text)
+            else:
+                final_text = format_natural_text(raw_text)
+
+            # Phân đoạn người nói (SortFormer / Nemotron Diarization)
+            if opts.get("diarization", True) and self.diarization.enabled and len(clean_audio) > 0:
+                d_col = opts.get("diarization_collar", self.config.diarization_collar)
+                d_min = opts.get("diarization_min_duration", self.config.diarization_min_duration)
+                segments = self.diarization.diarize_audio(clean_audio, sample_rate=16000, collar=d_col, min_duration=d_min)
+            else:
+                segments = [SpeakerSegment(start=0.0, end=round(total_duration, 3), speaker="speaker_0", confidence=1.0)]
+
+            # Định danh người nói (TitaNet Speaker Verification)
+            if opts.get("verification", True) and self.verification.enabled and len(clean_audio) > 0:
+                v_th = opts.get("verification_threshold", self.config.verification_threshold)
+                id_map = self.verification.resolve_identities(clean_audio, segments, sample_rate=16000, threshold=v_th)
+            else:
+                unique_spks = set(s.speaker for s in segments)
+                id_map = {spk: (spk, 1.0) for spk in unique_spks}
+
+            # Căn chỉnh văn bản với người nói
+            formatted_segments = self._align_text_with_speakers(
+                full_audio=clean_audio,
+                final_text=final_text,
+                segments=segments,
+                id_map=id_map,
+                total_duration=total_duration,
+                options=opts,
+                sample_rate=16000,
+                words=words
+            )
+            if not formatted_segments and final_text and final_text.strip():
+                formatted_segments = [{
+                    "start": 0.0,
+                    "end": round(total_duration, 2),
+                    "speaker": "Người nói",
+                    "raw_speaker": "speaker_0",
+                    "score": 1.0,
+                    "text": final_text
+                }]
+
 
         result = {
             "type": "final",
@@ -942,68 +1330,26 @@ class RealtimePipelineManager:
         # BƯỚC 3: Nhận dạng ZipFormer ASR (25% -> 60%)
         check_abort()
         raw_text = ""
-        if opts.get("asr", True) and self.asr.enabled and total_samples > 0:
-            hw_param = None if (opts.get("hotwords", True) and self.hotwords.enabled) else ""
-            report(3, "asr", 26, "Đang khởi tạo luồng giải mã ZipFormer Streaming Transducer...")
-            stream = self.asr.create_stream(hotwords=hw_param)
-            chunk_samples = int(0.32 * sample_rate)
-            last_report_p = 26
-            all_words_history = []
-            for i in range(0, total_samples, chunk_samples):
-                check_abort()
-                ch = clean_audio[i : i + chunk_samples]
-                self.asr.process_chunk(stream, ch, sample_rate=sample_rate)
-                
-                # Lưu vết words mỗi 2 giây để chống mất token ở file siêu dài
-                if i % (16000 * 2) < chunk_samples:
-                    interim_words = self.asr.extract_interim_words_with_timestamps(stream)
-                    if interim_words:
-                        if not all_words_history:
-                            all_words_history = interim_words.copy()
-                        else:
-                            last_t = all_words_history[-1]["start"]
-                            for w in interim_words:
-                                if w["start"] > last_t + 0.05:
-                                    all_words_history.append(w)
-                                    
-                p = 26 + int(34 * (i + len(ch)) / total_samples)
-                if p >= last_report_p + 4 or (i + chunk_samples >= total_samples):
-                    last_report_p = p
-                    processed_s = (i + len(ch)) / sample_rate
-                    report(3, "asr", p, f"Đang nhận dạng ASR: {processed_s:.1f}s / {duration_s:.1f}s ({int(100*(i+len(ch))/total_samples)}%)")
-            check_abort()
+        if opts.get("asr", True) and self.offline_asr.enabled and total_samples > 0:
+            report(3, "asr", 26, "Đang giải mã Offline ZipFormer (150M) siêu chính xác...")
             
-            interim_words = self.asr.extract_interim_words_with_timestamps(stream)
-            if interim_words:
-                if not all_words_history:
-                    all_words_history = interim_words.copy()
-                else:
-                    last_t = all_words_history[-1]["start"]
-                    for w in interim_words:
-                        if w["start"] > last_t + 0.05:
-                            all_words_history.append(w)
-
-            stream_info = self.asr.finish_stream_with_timestamps(stream)
+            stream_info = self.offline_asr.process_full_audio(clean_audio, sample_rate=sample_rate)
             raw_text = stream_info.get("text", "")
             tokens = stream_info.get("tokens", [])
             timestamps = stream_info.get("timestamps", [])
-            words = self.asr.extract_words_from_tokens(tokens, timestamps) if tokens else []
             
-            # Khắc phục lỗi Sherpa-ONNX giới hạn buffer / token ở các luồng cực dài
-            if len(all_words_history) > len(words) + 10:
-                words = all_words_history.copy()
-                raw_text = " ".join([w["word"] for w in words])
-                
+            words = self.asr.extract_words_from_tokens(tokens, timestamps) if tokens else []
             word_count = len(raw_text.split()) if raw_text else 0
             report(3, "asr", 60, f"Nhận dạng ASR hoàn tất! ({word_count} từ)")
         else:
             words = []
             report(3, "asr", 60, "Bỏ qua nhận dạng ASR (Module đang tắt)", skipped=True)
 
-        # BƯỚC 4: Phân đoạn người nói SortFormer (60% -> 80%)
+        # BƯỚC 4: Phân đoạn người nói (60% -> 80%)
         check_abort()
         if opts.get("diarization", True) and self.diarization.enabled and len(clean_audio) > 0:
-            report(4, "diarization", 65, "Đang phân đoạn người nói (NVIDIA Streaming SortFormer)...")
+            diar_model_name = "Nemotron-3" if "nemotron" in self.diarization.model_name.lower() else "SortFormer"
+            report(4, "diarization", 65, f"Đang phân đoạn người nói (NVIDIA {diar_model_name})...")
             d_col = opts.get("diarization_collar", self.config.diarization_collar)
             d_min = opts.get("diarization_min_duration", self.config.diarization_min_duration)
             segments = self.diarization.diarize_audio(clean_audio, sample_rate=16000, collar=d_col, min_duration=d_min)
@@ -1126,19 +1472,30 @@ class RealtimePipelineManager:
             word_assignments = []
 
             for w in words:
-                t = w["start"]
+                t_mid = (w["start"] + w["end"]) / 2.0
                 best_seg = None
-                min_dist = float("inf")
 
-                # Tìm phân đoạn bao phủ mốc thời gian của từ (dung sai 0.25s)
+                # Ưu tiên 1: Tìm phân đoạn chứa trọn vẹn điểm giữa của từ
                 for seg in sorted_segs:
-                    if (seg.start - 0.25) <= t <= (seg.end + 0.25):
+                    if seg.start <= t_mid <= seg.end:
                         best_seg = seg
                         break
-                    dist = min(abs(t - seg.start), abs(t - seg.end))
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_seg = seg
+                
+                # Ưu tiên 2: Nếu từ nằm ở khoảng trống giữa 2 phân đoạn, chọn phân đoạn gần nhất
+                if best_seg is None:
+                    min_dist = float("inf")
+                    for seg in sorted_segs:
+                        # Tính khoảng cách từ t_mid đến khoảng [seg.start, seg.end]
+                        if t_mid < seg.start:
+                            dist = seg.start - t_mid
+                        elif t_mid > seg.end:
+                            dist = t_mid - seg.end
+                        else:
+                            dist = 0.0
+                            
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_seg = seg
 
                 word_assignments.append((w, best_seg))
 
@@ -1149,6 +1506,9 @@ class RealtimePipelineManager:
             for w, seg in word_assignments:
                 raw_spk = seg.speaker if seg else "speaker_0"
                 real_name, score = id_map.get(raw_spk, (raw_spk, 1.0))
+                if real_name in ("Unknown", "Chưa đăng ký"):
+                    spk_num = raw_spk.replace("speaker_", "")
+                    real_name = f"Người nói {int(spk_num) + 1 if spk_num.isdigit() else raw_spk} (Chưa đăng ký)"
 
                 # Đổi lượt nói khi phát hiện người nói khác nhau (khác speaker)
                 is_spk_change = (

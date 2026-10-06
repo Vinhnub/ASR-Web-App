@@ -305,3 +305,139 @@ class ASRModule:
         self.enabled = enabled
         if self.enabled and self.recognizer is None:
             self._init_model()
+
+class OfflineASRModule:
+    """
+    Module hỗ trợ nhận dạng âm thanh hoàn chỉnh bằng Offline ZipFormer (VD: ZipFormer-150M)
+    Cho phép nhận dạng một tệp âm thanh hoàn chỉnh không cần chia chunk, có timestamps chính xác.
+    """
+    def __init__(
+        self,
+        model_dir: str,
+        num_threads: int = 4,
+        provider: str = "cpu",
+        enabled: bool = True,
+    ):
+        self.enabled = enabled
+        self.model_dir = model_dir
+        self.num_threads = num_threads
+        self.provider = provider
+        self.recognizer = None
+
+        if self.enabled:
+            self._init_model()
+
+    @staticmethod
+    def find_model_files(model_dir: str):
+        def find_first(patterns):
+            for pat in patterns:
+                matches = glob.glob(os.path.join(model_dir, pat))
+                if not matches:
+                    matches = glob.glob(os.path.join(model_dir, "**", pat), recursive=True)
+                if matches:
+                    return matches[0]
+            return None
+
+        # Tìm các file cho Offline model (không có chữ chunk)
+        encoder = find_first(["*encoder*int8*.onnx", "*encoder*.onnx"])
+        decoder = find_first(["*decoder*.onnx"])
+        joiner = find_first(["*joiner*int8*.onnx", "*joiner*.onnx"])
+        tokens = find_first(["*tokens*.txt", "*config*.json", "*bpe*.model"])
+        return encoder, decoder, joiner, tokens
+
+    def _init_model(self):
+        try:
+            import sherpa_onnx
+        except ImportError:
+            print("[OfflineASR] LỖI: Chưa cài đặt 'sherpa-onnx'.")
+            return
+
+        if not os.path.exists(self.model_dir):
+            print(f"[OfflineASR] Đang tải Offline ZipFormer về {self.model_dir}...")
+            import huggingface_hub
+            huggingface_hub.snapshot_download(
+                repo_id="hynt/ZipFormer-150M-CR-CTC-RNNT-6000h",
+                local_dir=self.model_dir
+            )
+
+        print(f"[OfflineASR] Đang khởi tạo Offline ZipFormer từ '{self.model_dir}'...")
+        encoder, decoder, joiner, tokens = self.find_model_files(self.model_dir)
+        if not (encoder and decoder and joiner and tokens):
+            print(f"[OfflineASR] CẢNH BÁO: Không tìm đủ các file thành phần ONNX trong '{self.model_dir}'")
+            return
+
+        self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+            encoder=encoder,
+            decoder=decoder,
+            joiner=joiner,
+            tokens=tokens,
+            num_threads=self.num_threads,
+            sample_rate=16000,
+            decoding_method="greedy_search",
+            provider=self.provider
+        )
+        print("[OfflineASR] Khởi tạo Offline ZipFormer thành công!")
+
+    def process_full_audio(self, audio_pcm: np.ndarray, sample_rate: int = 16000) -> Dict[str, Any]:
+        if not self.enabled or self.recognizer is None or len(audio_pcm) == 0:
+            return {"text": "", "tokens": [], "timestamps": []}
+
+        import sherpa_onnx
+        chunk_f32 = audio_pcm.astype(np.float32)
+        
+        # Để tránh lỗi OOM (Out Of Memory) của ONNX khi xử lý mảng quá dài, chia audio thành các đoạn nhỏ ~30s.
+        MAX_CHUNK_S = 30.0
+        max_samples = int(MAX_CHUNK_S * sample_rate)
+        
+        all_text = []
+        all_tokens = []
+        all_timestamps = []
+        
+        current_chunk_start = 0
+        total_len = len(chunk_f32)
+        
+        while current_chunk_start < total_len:
+            current_chunk_end = min(current_chunk_start + max_samples, total_len)
+            
+            # Tìm khoảng lặng (năng lượng thấp nhất) trong 5 giây cuối của chunk để cắt (nếu chưa đến cuối file)
+            if current_chunk_end < total_len:
+                search_start = max(current_chunk_start + int((MAX_CHUNK_S - 5.0) * sample_rate), current_chunk_start)
+                search_end = current_chunk_end
+                
+                if search_start < search_end:
+                    window_size = int(0.1 * sample_rate) # 100ms
+                    abs_audio = np.abs(chunk_f32[search_start:search_end])
+                    
+                    min_energy = float('inf')
+                    best_cut = search_end
+                    
+                    for j in range(0, len(abs_audio) - window_size, window_size):
+                        energy = np.sum(abs_audio[j : j + window_size])
+                        if energy < min_energy:
+                            min_energy = energy
+                            best_cut = search_start + j + window_size // 2
+                            
+                    current_chunk_end = best_cut
+                    
+            # Decode chunk
+            segment = chunk_f32[current_chunk_start : current_chunk_end]
+            stream = self.recognizer.create_stream()
+            stream.accept_waveform(sample_rate, segment)
+            self.recognizer.decode_stream(stream)
+            
+            res = stream.result
+            if res.text:
+                all_text.append(res.text)
+                
+            # Cộng thêm thời gian offset của chunk vào timestamps
+            offset_s = current_chunk_start / sample_rate
+            all_tokens.extend(res.tokens)
+            all_timestamps.extend([t + offset_s for t in res.timestamps])
+            
+            current_chunk_start = current_chunk_end
+
+        return {
+            "text": " ".join(all_text),
+            "tokens": all_tokens,
+            "timestamps": all_timestamps
+        }

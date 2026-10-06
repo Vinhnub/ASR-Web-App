@@ -216,5 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-testing_audio
-NoiseFilter/Testing_Audio
+# Audio testing
+testing_audio/
+NoiseFilter/Testing_Audio/
+
+# Zipformer models
+zipformer_offline_vi/
+zipformer_streaming_vi/
+zipformer_*/
+

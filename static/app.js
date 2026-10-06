@@ -355,9 +355,68 @@ function renderLiveMultiSpeakers(speakers, container, countBadge) {
   });
 }
 
+function handleCommittedTurnEvent(turnEvent) {
+  if (!turnEvent || !transcriptFeed) return;
+
+  const emptyState = transcriptFeed.querySelector(".empty-state");
+  if (emptyState) {
+    emptyState.remove();
+  }
+
+  const turnId = turnEvent.turn_id;
+  const spkKey = turnEvent.raw_speaker || turnEvent.speaker || "speaker_0";
+  const spkClass = getSpeakerClass(spkKey);
+  const cardId = `turn_card_${turnId}`;
+
+  if (turnEvent.action === "turn_new") {
+    const card = document.createElement("div");
+    card.id = cardId;
+    card.className = `transcript-card ${spkClass} live-committed-turn`;
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="speaker-tag ${spkClass}"><i class="fa-solid fa-user"></i> ${escapeHtml(turnEvent.speaker)}</span>
+        <span class="time-tag"><i class="fa-solid fa-circle-check" style="font-size:10px; color:var(--success);"></i> <span class="time-range">${turnEvent.start.toFixed(2)}s - ${turnEvent.end.toFixed(2)}s</span></span>
+      </div>
+      <p class="card-text">${escapeHtml(turnEvent.text)}</p>
+    `;
+    transcriptFeed.appendChild(card);
+    transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+  } else if (turnEvent.action === "turn_update") {
+    let card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement("div");
+      card.id = cardId;
+      card.className = `transcript-card ${spkClass} live-committed-turn`;
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="speaker-tag ${spkClass}"><i class="fa-solid fa-user"></i> ${escapeHtml(turnEvent.speaker)}</span>
+          <span class="time-tag"><i class="fa-solid fa-circle-check" style="font-size:10px; color:var(--success);"></i> <span class="time-range">${turnEvent.start.toFixed(2)}s - ${turnEvent.end.toFixed(2)}s</span></span>
+        </div>
+        <p class="card-text">${escapeHtml(turnEvent.text)}</p>
+      `;
+      transcriptFeed.appendChild(card);
+    } else {
+      const cardText = card.querySelector(".card-text");
+      if (cardText) {
+        cardText.textContent = turnEvent.text;
+      }
+      const timeRange = card.querySelector(".time-range");
+      if (timeRange) {
+        timeRange.textContent = `${turnEvent.start.toFixed(2)}s - ${turnEvent.end.toFixed(2)}s`;
+      }
+    }
+    transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+  }
+}
+
 function handleServerMessage(data) {
   if (data.type === "partial") {
-    // Hiển thị chữ tức thì (không in hoa gắt gỏng)
+    // 1. Cập nhật 2-Pass ZipFormer-150M committed turns theo thời gian thực
+    if (data.turn_event) {
+      handleCommittedTurnEvent(data.turn_event);
+    }
+
+    // 2. Hiển thị chữ tức thì (không in hoa gắt gỏng)
     if (typeof data.text !== "undefined") {
       latestActiveSpkBadge = (data.realtime_diarization && data.active_speaker)
         ? `<span class="badge badge-accent" style="margin-right: 8px; vertical-align: middle;"><i class="fa-solid fa-user"></i> ${escapeHtml(data.active_speaker)}</span>`
@@ -659,7 +718,7 @@ function stopRecording() {
     micProgressBar.style.width = "100%";
     micProgressBar.style.background = "";
     micProgressTitle.textContent = "Đang chốt âm thanh & phân tích người nói...";
-    micProgressSubStatus.textContent = "Khởi chạy SortFormer Diarization, TitaNet Verification & ViBERT-capu...";
+    micProgressSubStatus.textContent = "Khởi chạy Diarization, TitaNet Verification & ViBERT-capu...";
     micProgressSpinner.className = "spinner-pulse";
     micProgressSpinner.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
     micProgressPercentBadge.textContent = "Đang phân tích...";
@@ -1878,6 +1937,13 @@ function initInlineModelParameters() {
     });
   }
 
+  const diarModelEl = document.getElementById("param_diarization_model");
+  if (diarModelEl) {
+    diarModelEl.addEventListener("change", () => {
+      currentModelConfig["diarization_model"] = diarModelEl.value;
+    });
+  }
+
   const toggleRtDiarEl = document.getElementById("toggleRealtimeDiarization");
   if (toggleRtDiarEl) {
     toggleRtDiarEl.addEventListener("change", () => {
@@ -1894,6 +1960,7 @@ function getInlineModelParameters() {
   return {
     verification_threshold: parseFloat(document.getElementById("param_verification_threshold")?.value) || 0.55,
     min_speech_duration_for_id: parseFloat(document.getElementById("param_min_speech_duration_for_id")?.value) || 0.80,
+    diarization_model: document.getElementById("param_diarization_model")?.value || "nvidia/Nemotron-3-Diarization",
     diarization_collar: parseFloat(document.getElementById("param_diarization_collar")?.value) || 0.25,
     diarization_min_duration: parseFloat(document.getElementById("param_diarization_min_duration")?.value) || 0.20,
     diarization_chunk_len: parseInt(document.getElementById("param_diarization_chunk_len")?.value, 10) || 340,
@@ -1906,6 +1973,8 @@ function getInlineModelParameters() {
     speaker_inactivity_timeout_s: parseFloat(document.getElementById("param_speaker_inactivity_timeout_s")?.value) || 7.0,
     interim_max_words: parseInt(document.getElementById("param_interim_max_words")?.value, 10) || 20,
     interim_idle_timeout_s: parseFloat(document.getElementById("param_interim_idle_timeout_s")?.value) || 3.0,
+    enable_2pass_streaming: document.getElementById("toggle2PassStreaming") ? document.getElementById("toggle2PassStreaming").checked : true,
+    turn_silence_timeout_s: parseFloat(document.getElementById("param_turn_silence_timeout_s")?.value) || 0.7,
   };
 }
 
@@ -1933,8 +2002,13 @@ function updateInlineModelParametersUI(config) {
     }
   };
 
+  if (config.enable_denoise !== undefined && toggleDenoise) {
+    toggleDenoise.checked = config.enable_denoise;
+  }
+
   setVal("param_verification_threshold", "badge_verification_threshold", config.verification_threshold, "", "", true, 2);
   setVal("param_min_speech_duration_for_id", "badge_min_speech_duration_for_id", config.min_speech_duration_for_id, "s", "", true, 2);
+  setVal("param_diarization_model", null, config.diarization_model);
   setVal("param_diarization_collar", "badge_diarization_collar", config.diarization_collar, "s", "", true, 2);
   setVal("param_diarization_min_duration", "badge_diarization_min_duration", config.diarization_min_duration, "s", "", true, 2);
   setVal("param_diarization_chunk_len", "badge_diarization_chunk_len", config.diarization_chunk_len, "frames", "", false);
@@ -1947,6 +2021,11 @@ function updateInlineModelParametersUI(config) {
     const tg = document.getElementById("toggleRealtimeDiarization");
     if (tg) tg.checked = config.enable_realtime_diarization;
   }
+  if (config.enable_2pass_streaming !== undefined) {
+    const tg2 = document.getElementById("toggle2PassStreaming");
+    if (tg2) tg2.checked = config.enable_2pass_streaming;
+  }
+  setVal("param_turn_silence_timeout_s", "badge_turn_silence_timeout_s", config.turn_silence_timeout_s, "s", "", true, 1);
   setVal("param_max_recent_words_per_speaker", "badge_max_recent_words_per_speaker", config.max_recent_words_per_speaker, "từ", "", false);
   setVal("param_speaker_inactivity_timeout_s", "badge_speaker_inactivity_timeout_s", config.speaker_inactivity_timeout_s, "s", "", false);
   setVal("param_interim_max_words", "badge_interim_max_words", config.interim_max_words, "từ", "", false);

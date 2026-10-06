@@ -23,8 +23,11 @@ class PipelineConfig:
     enable_punctuation: bool = True
     enable_realtime_diarization: bool = True  # Bật/tắt phân đoạn & nhận diện người nói thời gian thực
     realtime_diarization_interval_s: float = 1.0  # Chu kỳ cập nhật Diarization (giây)
-    max_recent_words_per_speaker: int = 25  # Số từ gần nhất hiển thị cho mỗi người nói
+    max_recent_words_per_speaker: int = 100  # Số từ gần nhất hiển thị cho mỗi người nói (đồng bộ với lượt nói đầy đủ)
     speaker_inactivity_timeout_s: float = 7.0  # Thời gian ẩn người không nói (giây)
+    enable_2pass_streaming: bool = True  # Chốt lượt nói cuốn chiếu bằng ZipFormer-150M
+    turn_silence_timeout_s: float = 0.7  # Thời gian im lặng (s) để chốt lượt nói của chunk
+    turn_min_speech_s: float = 0.4  # Thời lượng nói tối thiểu (s) để kích hoạt ZipFormer-150M
 
     # 2. Thiết bị phần cứng
     device: str = "cuda"  # 'cuda' hoặc 'cpu'
@@ -46,17 +49,18 @@ class PipelineConfig:
     asr_hotwords_score: float = 2.0
     asr_bpe_vocab: str = os.path.join(BASE_DIR, "zipformer_streaming_vi", "bpe_vocab.txt")
 
-    # 6. Cấu hình Diarization (SortFormer)
-    diarization_model: str = "nvidia/diar_streaming_sortformer_4spk-v2.1"
+    # 6. Cấu hình Diarization (Nemotron-3)
+    diarization_model: str = "nvidia/Nemotron-3-Diarization"
     diarization_chunk_len: int = 340
     diarization_collar: float = 0.25
     diarization_min_duration: float = 0.20
 
-    # 7. Cấu hình Verification (TitaNet)
-    verification_model: str = os.path.join(BASE_DIR, "models", "titanet_large.onnx")
+    # 7. Cấu hình Verification & Voiceprint Tracking (TitaNet)
+    verification_model: str = "nvidia/speakerverification_en_titanet_large"
     speaker_db_dir: str = os.path.join(APP_DIR, "speaker_db")
     verification_threshold: float = 0.75
     min_speech_duration_for_id: float = 0.80
+    speaker_tracking_threshold: float = 0.55  # Ngưỡng Cosine Similarity để theo dõi khóa danh tính trong phiên
 
     # 8. Cấu hình Hotwords (Contextual Biasing trực tiếp trong ZipFormer)
     hotwords_file: str = os.path.join(APP_DIR, "hotwords.txt")
@@ -81,6 +85,9 @@ class PipelineConfig:
             "realtime_diarization_interval_s": self.realtime_diarization_interval_s,
             "max_recent_words_per_speaker": self.max_recent_words_per_speaker,
             "speaker_inactivity_timeout_s": self.speaker_inactivity_timeout_s,
+            "enable_2pass_streaming": self.enable_2pass_streaming,
+            "turn_silence_timeout_s": self.turn_silence_timeout_s,
+            "turn_min_speech_s": self.turn_min_speech_s,
             # Cấu hình phần cứng & Audio
             "device": self.device,
             "sample_rate": self.sample_rate,
@@ -88,7 +95,9 @@ class PipelineConfig:
             # TitaNet Speaker Verification
             "verification_threshold": self.verification_threshold,
             "min_speech_duration_for_id": self.min_speech_duration_for_id,
-            # SortFormer Speaker Diarization
+            "speaker_tracking_threshold": self.speaker_tracking_threshold,
+            # Speaker Diarization
+            "diarization_model": self.diarization_model,
             "diarization_collar": self.diarization_collar,
             "diarization_min_duration": self.diarization_min_duration,
             "diarization_chunk_len": self.diarization_chunk_len,

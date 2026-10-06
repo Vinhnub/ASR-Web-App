@@ -48,7 +48,7 @@
                   <i class="fa-solid fa-sliders"></i>
                 </button>
                 <label class="switch">
-                  <input type="checkbox" id="toggleDenoise" checked>
+                  <input type="checkbox" id="toggleDenoise">
                   <span class="slider"></span>
                 </label>
               </div>
@@ -123,7 +123,7 @@
             <div class="toggle-row">
               <div class="toggle-info">
                 <span class="toggle-title"><i class="fa-solid fa-users-viewfinder text-muted"></i> Speaker Diarization</span>
-                <span class="toggle-model">NVIDIA SortFormer (AOSC)</span>
+                <span class="toggle-model">Nemotron-3</span>
               </div>
               <div class="toggle-controls">
                 <button type="button" class="btn-toggle-config active" data-target="panel-diarization" title="Ẩn/Hiện thông số">
@@ -136,6 +136,15 @@
               </div>
             </div>
             <div class="model-inline-params" id="panel-diarization">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Model Phân đoạn:</span>
+                </div>
+                <select id="param_diarization_model" class="inline-select">
+                  <option value="nvidia/Nemotron-3-Diarization" selected>Nemotron-3 (Chính xác cao)</option>
+                  <option value="nvidia/diar_streaming_sortformer_4spk-v2.1">SortFormer (Nhanh)</option>
+                </select>
+              </div>
               <div class="inline-param-row">
                 <div class="inline-param-header">
                   <span class="inline-param-label">Collar Margin (Nối câu):</span>
@@ -229,6 +238,24 @@
                 </div>
                 <input type="range" id="param_speaker_inactivity_timeout_s" min="3" max="30" step="1" value="7" data-unit="s" class="inline-slider">
                 <div class="inline-param-desc">Tự động ẩn thẻ của người nói nếu im lặng quá số giây này.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Chốt cuốn chiếu 2-Pass (150M):</span>
+                  <label class="switch switch-sm" style="margin-left: auto;">
+                    <input type="checkbox" id="toggle2PassStreaming" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="inline-param-desc">Tự động chốt từng lượt nói bằng ZipFormer-150M khi ngắt quãng, nối chuỗi tăng dần theo thời gian thực.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Ngưỡng im lặng chốt lượt:</span>
+                  <span id="badge_turn_silence_timeout_s" class="inline-badge">0.7s</span>
+                </div>
+                <input type="range" id="param_turn_silence_timeout_s" min="0.4" max="2.0" step="0.1" value="0.7" data-unit="s" class="inline-slider">
+                <div class="inline-param-desc">Thời gian im lặng tối thiểu để chốt lượt nói của chunk.</div>
               </div>
             </div>
           </div>
@@ -390,7 +417,7 @@
                 </div>
                 <div>
                   <h4 id="micProgressTitle">Đang chốt âm thanh & phân tích người nói...</h4>
-                  <div id="micProgressSubStatus" class="progress-substatus">Khởi chạy SortFormer Diarization & TitaNet Verification...</div>
+                  <div id="micProgressSubStatus" class="progress-substatus">Khởi chạy Diarization & TitaNet Verification...</div>
                 </div>
               </div>
               <div class="header-right">
@@ -507,7 +534,7 @@
               <div class="step-item" id="step-diarization" data-step="4">
                 <div class="step-bullet"><i class="fa-solid fa-users"></i></div>
                 <div class="step-info">
-                  <span class="step-name">4. Phân Tách Người Nói (SortFormer)</span>
+                  <span class="step-name">4. Phân Tách Người Nói (Diarization)</span>
                   <span class="step-detail" id="stepDetail-diarization">Chờ phân đoạn...</span>
                 </div>
               </div>
