@@ -29,6 +29,14 @@ const toggleDiarization = document.getElementById("toggleDiarization");
 const toggleVerification = document.getElementById("toggleVerification");
 const toggleHotwords = document.getElementById("toggleHotwords");
 const togglePunctuation = document.getElementById("togglePunctuation");
+const toggleSummary = document.getElementById("toggleSummary");
+
+// Summary UI
+const summarySection = document.getElementById("summarySection");
+const summaryContent = document.getElementById("summaryContent");
+const btnCopySummary = document.getElementById("btnCopySummary");
+const btnRegenerateSummary = document.getElementById("btnRegenerateSummary");
+const summaryLoadingSpinner = document.getElementById("summaryLoadingSpinner");
 
 // Sidebar Toggle Progress & Alert
 const toggleProgressWrapper = document.getElementById("toggleProgressWrapper");
@@ -261,6 +269,7 @@ function sendToggleConfig() {
       verification: toggleVerification.checked,
       hotwords: toggleHotwords.checked,
       punctuation: togglePunctuation.checked,
+      summary: toggleSummary ? toggleSummary.checked : true,
       realtime_diarization: toggleRtDiar ? toggleRtDiar.checked : true,
       max_recent_words_per_speaker: paramMaxWords ? parseInt(paramMaxWords.value, 10) : 25,
       speaker_inactivity_timeout_s: paramInactTimeout ? parseFloat(paramInactTimeout.value) : 7.0,
@@ -942,10 +951,51 @@ function getPlayerForResult(resultData) {
   return isVideo ? videoPreview : audioPreview;
 }
 
+function formatMarkdownToHtml(mdText) {
+  if (!mdText) return "";
+  let html = escapeHtml(mdText);
+  // In đậm: **text**
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // In nghiêng: *text*
+  html = html.replace(/(^|[^*])\*(?!\*)(.*?)\*/g, '$1<em>$2</em>');
+  // Tiêu đề: ### Title, ## Title, # Title
+  html = html.replace(/^### (.*$)/gim, '<h5 class="summary-subheading">$1</h5>');
+  html = html.replace(/^## (.*$)/gim, '<h4 class="summary-heading">$1</h4>');
+  html = html.replace(/^# (.*$)/gim, '<h3 class="summary-main-heading">$1</h3>');
+  // Đường kẻ ngang phân cách
+  html = html.replace(/^\s*---+\s*$/gim, '<hr class="summary-divider">');
+  // Gạch đầu dòng: - item hoặc * item
+  html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li class="summary-list-item">$1</li>');
+  // Danh sách đánh số: 1. item
+  html = html.replace(/^\s*(\d+)\.\s+(.*$)/gim, '<li class="summary-num-item"><span class="item-num">$1.</span> $2</li>');
+  // Bọc các <li> liên tiếp trong <ul> hoặc <ol>
+  html = html.replace(/((?:<li class="summary-list-item">.*?<\/li>\s*)+)/g, '<ul class="summary-bullet-list">$1</ul>');
+  html = html.replace(/((?:<li class="summary-num-item">.*?<\/li>\s*)+)/g, '<ol class="summary-ordered-list">$1</ol>');
+  // Dòng ngắt quãng
+  html = html.replace(/\n\n+/g, '<br><br>');
+  html = html.replace(/\n/g, '<br>');
+  return html;
+}
+
+function renderSummaryBox(summaryText) {
+  if (!summarySection || !summaryContent) return;
+  if (summaryText && summaryText.trim()) {
+    summarySection.style.display = "block";
+    summaryContent.innerHTML = formatMarkdownToHtml(summaryText);
+    if (summaryLoadingSpinner) summaryLoadingSpinner.style.display = "none";
+  } else {
+    summarySection.style.display = "none";
+    summaryContent.innerHTML = "";
+  }
+}
+
 function renderFinalResult(data) {
   lastProcessedResult = data;
   // Làm sạch màn hình hiển thị trước khi vẽ các thẻ kết quả chốt phiên
   transcriptFeed.innerHTML = "";
+
+  // Hiển thị khối tóm tắt AI (nếu có)
+  renderSummaryBox(data.summary);
 
   // Hiển thị các nút xuất phụ đề
   const exportActions = document.getElementById("exportActions");
@@ -1202,7 +1252,7 @@ function updateStepperStep(stepKey, state, detailText) {
 }
 
 function resetStepper() {
-  const steps = ["extract", "denoise", "asr", "diarization", "verification", "punctuation"];
+  const steps = ["extract", "denoise", "asr", "diarization", "verification", "punctuation", "summary"];
   steps.forEach(k => {
     updateStepperStep(k, "pending", "Chờ xử lý...");
   });
@@ -1212,7 +1262,8 @@ function resetStepper() {
     "asr": '<i class="fa-solid fa-microphone-lines"></i>',
     "diarization": '<i class="fa-solid fa-users"></i>',
     "verification": '<i class="fa-solid fa-id-card"></i>',
-    "punctuation": '<i class="fa-solid fa-font"></i>'
+    "punctuation": '<i class="fa-solid fa-font"></i>',
+    "summary": '<i class="fa-solid fa-wand-magic-sparkles"></i>'
   };
   steps.forEach(k => {
     const el = document.getElementById(`step-${k}`);
@@ -1239,7 +1290,7 @@ function handleOfflineCancelled(msg = "Quá trình xử lý đã được hủy 
   progressSpinner.style.color = "var(--warning)";
   progressSpinner.innerHTML = '<i class="fa-solid fa-ban"></i>';
 
-  const stepOrder = ["extract", "denoise", "asr", "diarization", "verification", "punctuation"];
+  const stepOrder = ["extract", "denoise", "asr", "diarization", "verification", "punctuation", "summary"];
   stepOrder.forEach(k => {
     const el = document.getElementById(`step-${k}`);
     if (el && el.classList.contains("active")) {
@@ -1336,6 +1387,7 @@ btnProcessFile.addEventListener("click", async () => {
   formData.append("verification", toggleVerification.checked);
   formData.append("hotwords", toggleHotwords.checked);
   formData.append("punctuation", togglePunctuation.checked);
+  formData.append("summary", toggleSummary ? toggleSummary.checked : true);
 
   // Truyền toàn bộ các thông số model đang được tinh chỉnh trên giao diện
   const activeParams = typeof getInlineModelParameters === "function" ? getInlineModelParameters() : currentModelConfig;
@@ -1345,7 +1397,7 @@ btnProcessFile.addEventListener("click", async () => {
     }
   }
 
-  const stepOrder = ["extract", "denoise", "asr", "diarization", "verification", "punctuation"];
+  const stepOrder = ["extract", "denoise", "asr", "diarization", "verification", "punctuation", "summary"];
 
   try {
     const response = await fetch("/api/process-file-stream", {
@@ -2290,6 +2342,70 @@ async function checkExistingRecording() {
   } catch (e) {
     // Không có bản ghi âm hoặc server chưa sẵn sàng
   }
+}
+
+// Sự kiện Sao chép và Tóm tắt lại
+if (btnCopySummary) {
+  btnCopySummary.addEventListener("click", () => {
+    const textToCopy = summaryContent ? summaryContent.innerText.trim() : "";
+    if (!textToCopy) {
+      showNotification("Chưa có nội dung tóm tắt để sao chép!", "warning", 3000);
+      return;
+    }
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      showNotification("Đã sao chép bản tóm tắt vào bộ nhớ tạm!", "success", 3000);
+      const icon = btnCopySummary.querySelector("i");
+      if (icon) {
+        icon.className = "fa-solid fa-check";
+        setTimeout(() => { icon.className = "fa-solid fa-copy"; }, 2000);
+      }
+    }).catch(err => {
+      showNotification("Không thể sao chép: " + err, "error", 4000);
+    });
+  });
+}
+
+if (btnRegenerateSummary) {
+  btnRegenerateSummary.addEventListener("click", async () => {
+    if (!lastProcessedResult) {
+      showNotification("Chưa có dữ liệu phiên để tóm tắt lại!", "warning", 3000);
+      return;
+    }
+
+    if (summaryLoadingSpinner) summaryLoadingSpinner.style.display = "block";
+    btnRegenerateSummary.disabled = true;
+
+    try {
+      const inlineParams = typeof getInlineModelParameters === "function" ? getInlineModelParameters() : {};
+      const maxTokens = inlineParams.summary_max_tokens || 512;
+      const temp = inlineParams.summary_temperature !== undefined ? inlineParams.summary_temperature : 0.3;
+
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: lastProcessedResult.final_text || "",
+          segments: lastProcessedResult.segments || [],
+          max_tokens: maxTokens,
+          temperature: temp
+        })
+      });
+
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.detail || "Không thể tạo tóm tắt");
+
+      if (lastProcessedResult) {
+        lastProcessedResult.summary = resData.summary;
+      }
+      renderSummaryBox(resData.summary);
+      showNotification("Đã tạo lại bản tóm tắt thành công!", "success", 3500);
+    } catch (err) {
+      showNotification("Lỗi khi tạo lại tóm tắt: " + err.message, "error", 5000);
+    } finally {
+      if (summaryLoadingSpinner) summaryLoadingSpinner.style.display = "none";
+      btnRegenerateSummary.disabled = false;
+    }
+  });
 }
 
 // Start on Page Load

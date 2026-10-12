@@ -21,8 +21,9 @@ class PipelineConfig:
     enable_verification: bool = True
     enable_hotword: bool = True
     enable_punctuation: bool = True
+    enable_summary: bool = True  # Bật/tắt tóm tắt nội dung tự động (Qwen2.5-1.5B)
     enable_realtime_diarization: bool = True  # Bật/tắt phân đoạn & nhận diện người nói thời gian thực
-    realtime_diarization_interval_s: float = 1.0  # Chu kỳ cập nhật Diarization (giây)
+    realtime_diarization_interval_s: float = 2.0  # Chu kỳ cập nhật Diarization tối ưu hiệu năng (giây)
     max_recent_words_per_speaker: int = 100  # Số từ gần nhất hiển thị cho mỗi người nói (đồng bộ với lượt nói đầy đủ)
     speaker_inactivity_timeout_s: float = 7.0  # Thời gian ẩn người không nói (giây)
     enable_2pass_streaming: bool = True  # Chốt lượt nói cuốn chiếu bằng ZipFormer-150M
@@ -68,7 +69,13 @@ class PipelineConfig:
     # 9. Cấu hình Automatic Punctuation (ViBERT-capu)
     punctuation_variant: str = "int8"  # 'int8' hoặc 'fp32'
 
-    # 10. Cấu hình Server
+    # 10. Cấu hình AI Summarization (Qwen2.5-1.5B-Instruct)
+    summary_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    summary_max_tokens: int = 384
+    summary_temperature: float = 0.3
+
+
+    # 11. Cấu hình Server
     host: str = "0.0.0.0"
     port: int = 8000
 
@@ -81,6 +88,7 @@ class PipelineConfig:
             "enable_verification": self.enable_verification,
             "enable_hotword": self.enable_hotword,
             "enable_punctuation": self.enable_punctuation,
+            "enable_summary": self.enable_summary,
             "enable_realtime_diarization": self.enable_realtime_diarization,
             "realtime_diarization_interval_s": self.realtime_diarization_interval_s,
             "max_recent_words_per_speaker": self.max_recent_words_per_speaker,
@@ -109,6 +117,10 @@ class PipelineConfig:
             "denoise_atten_lim_db": self.denoise_atten_lim_db,
             # ViBERT-capu Punctuation
             "punctuation_variant": self.punctuation_variant,
+            # Qwen2.5-1.5B Summarization
+            "summary_model": self.summary_model,
+            "summary_max_tokens": self.summary_max_tokens,
+            "summary_temperature": self.summary_temperature,
         }
 
     def update(self, new_params: Dict) -> None:

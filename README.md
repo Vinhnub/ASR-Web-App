@@ -12,6 +12,12 @@ Hệ thống nhận dạng giọng nói Tiếng Việt (Speech-to-Text) theo th�
 
 ---
 
+## 📊 Báo Cáo Thử Nghiệm & Benchmark
+Xem báo cáo chi tiết so sánh hiệu năng và chất lượng giữa hai chế độ **Offline** và **Online** trên bộ dữ liệu 10 tệp âm thanh đa người nói, đa môi trường nhiễu tại:
+👉 **[README_BENCHMARK_REPORT.md](README_BENCHMARK_REPORT.md)**
+
+---
+
 ## 📂 Cấu Trúc Thư Mục
 Dự án được thiết kế độc lập hoàn toàn, tất cả mọi thứ cần thiết để chạy đều nằm gọn trong thư mục này:
 ```text

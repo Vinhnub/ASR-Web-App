@@ -303,6 +303,43 @@
               </div>
             </div>
           </div>
+
+          <!-- 7. AI Summarization -->
+          <div class="toggle-item">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title"><i class="fa-solid fa-wand-magic-sparkles text-muted"></i> AI Summarization</span>
+                <span class="toggle-model">Qwen2.5-1.5B</span>
+              </div>
+              <div class="toggle-controls">
+                <button type="button" class="btn-toggle-config active" data-target="panel-summary" title="Ẩn/Hiện thông số">
+                  <i class="fa-solid fa-sliders"></i>
+                </button>
+                <label class="switch">
+                  <input type="checkbox" id="toggleSummary" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="model-inline-params" id="panel-summary">
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Độ dài tối đa (Max Tokens):</span>
+                  <span id="badge_summary_max_tokens" class="inline-badge">768 tokens</span>
+                </div>
+                <input type="number" id="param_summary_max_tokens" min="128" max="1024" step="64" value="768" data-unit=" tokens" class="inline-number">
+                <div class="inline-param-desc">Giới hạn số token tối đa Qwen2.5 sinh ra cho bản biên bản cuộc họp.</div>
+              </div>
+              <div class="inline-param-row">
+                <div class="inline-param-header">
+                  <span class="inline-param-label">Độ sáng tạo (Temperature):</span>
+                  <span id="badge_summary_temperature" class="inline-badge">0.30</span>
+                </div>
+                <input type="range" id="param_summary_temperature" min="0.0" max="1.0" step="0.05" value="0.30" class="inline-slider">
+                <div class="inline-param-desc">0.1 - 0.3: Tóm tắt trung thực, khách quan; > 0.5: Sáng tạo hơn.</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <button id="btnApplyToggles" class="btn btn-secondary btn-block">
@@ -554,6 +591,14 @@
                   <span class="step-detail" id="stepDetail-punctuation">Chờ thêm dấu...</span>
                 </div>
               </div>
+
+              <div class="step-item" id="step-summary" data-step="7">
+                <div class="step-bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <div class="step-info">
+                  <span class="step-name">7. Tóm Tắt Ý Chính (Qwen2.5)</span>
+                  <span class="step-detail" id="stepDetail-summary">Chờ tóm tắt...</span>
+                </div>
+              </div>
             </div>
 
             <!-- Thống kê thời gian và hiệu năng -->
@@ -570,6 +615,33 @@
 
         <!-- Results: Final Transcript with Speakers -->
         <div class="results-section">
+          <!-- Khối Tóm Tắt Cuộc Họp / Hội Thoại Tự Động (AI Summary Card) -->
+          <div id="summarySection" class="summary-section" style="display: none;">
+            <div class="summary-card">
+              <div class="summary-card-header">
+                <div class="summary-header-left">
+                  <i class="fa-solid fa-file-signature text-accent"></i>
+                  <h4>Biên Bản Cuộc Họp (Meeting Minutes - MM)</h4>
+                  <span class="badge badge-accent">Qwen2.5-1.5B</span>
+                </div>
+                <div class="summary-header-right">
+                  <button id="btnCopySummary" class="btn btn-outline btn-xs" title="Sao chép toàn bộ văn bản tóm tắt">
+                    <i class="fa-solid fa-copy"></i> Sao chép
+                  </button>
+                  <button id="btnRegenerateSummary" class="btn btn-outline btn-xs" title="Tạo lại bản tóm tắt mới">
+                    <i class="fa-solid fa-rotate-right"></i> Tóm tắt lại
+                  </button>
+                </div>
+              </div>
+              <div id="summaryLoadingSpinner" class="summary-loading" style="display: none;">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> Đang phân tích và tạo bản tóm tắt với Qwen2.5-1.5B...
+              </div>
+              <div id="summaryContent" class="summary-content">
+                <!-- Nội dung tóm tắt sẽ render tại đây -->
+              </div>
+            </div>
+          </div>
+
           <div class="results-header">
             <div class="header-left-title">
               <h3><i class="fa-solid fa-list-check"></i> Biên Bản Hội Thoại Hoàn Chỉnh (Final with Speaker)</h3>

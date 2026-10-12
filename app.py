@@ -265,6 +265,7 @@ async def process_file_endpoint(
     verification: bool = Form(True),
     hotwords: bool = Form(True),
     punctuation: bool = Form(True),
+    summary: bool = Form(True),
     verification_threshold: Optional[float] = Form(None),
     min_speech_duration_for_id: Optional[float] = Form(None),
     diarization_collar: Optional[float] = Form(None),
@@ -281,6 +282,7 @@ async def process_file_endpoint(
         "verification": verification,
         "hotwords": hotwords,
         "punctuation": punctuation,
+        "summary": summary,
     }
     for param_k, param_v in [
         ("verification_threshold", verification_threshold),
@@ -334,6 +336,7 @@ async def process_file_stream_endpoint(
     verification: bool = Form(True),
     hotwords: bool = Form(True),
     punctuation: bool = Form(True),
+    summary: bool = Form(True),
     verification_threshold: Optional[float] = Form(None),
     min_speech_duration_for_id: Optional[float] = Form(None),
     diarization_collar: Optional[float] = Form(None),
@@ -357,6 +360,7 @@ async def process_file_stream_endpoint(
         "verification": verification,
         "hotwords": hotwords,
         "punctuation": punctuation,
+        "summary": summary,
     }
     for param_k, param_v in [
         ("verification_threshold", verification_threshold),
@@ -388,7 +392,7 @@ async def process_file_stream_endpoint(
                 q.put({
                     "type": "progress",
                     "step": 1,
-                    "total_steps": 6,
+                    "total_steps": 7,
                     "step_name": "extract",
                     "percent": 5,
                     "message": f"Đang trích xuất âm thanh từ file '{filename}'..."
@@ -404,7 +408,7 @@ async def process_file_stream_endpoint(
                 q.put({
                     "type": "progress",
                     "step": 1,
-                    "total_steps": 6,
+                    "total_steps": 7,
                     "step_name": "extract",
                     "percent": 10,
                     "message": f"Trích xuất thành công: {dur:.1f}s âm thanh chuẩn 16kHz mono.",
@@ -523,6 +527,32 @@ async def export_subtitles_endpoint(payload: Dict[str, Any] = Body(...)):
         "Content-Disposition": f"attachment; filename=\"{base_name}{ext}\""
     }
     return Response(content=content, media_type=media_type, headers=headers)
+
+
+@app.post("/api/summarize")
+async def summarize_endpoint(payload: Dict[str, Any] = Body(...)):
+    """
+    Tạo bản tóm tắt nội dung trực tiếp theo yêu cầu từ văn bản hoặc danh sách phân đoạn.
+    Sử dụng mô hình Qwen2.5-1.5B-Instruct.
+    """
+    text = payload.get("text", "")
+    segments = payload.get("segments", [])
+    max_tokens = payload.get("max_tokens")
+    temperature = payload.get("temperature")
+
+    if not text and not segments:
+        raise HTTPException(status_code=400, detail="Cần cung cấp 'text' hoặc 'segments' để tóm tắt.")
+
+    try:
+        summary_result = pipeline_manager.summary.summarize(
+            text=text,
+            segments=segments,
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        return {"summary": summary_result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi tóm tắt: {str(e)}")
 
 
 # ==============================================================================

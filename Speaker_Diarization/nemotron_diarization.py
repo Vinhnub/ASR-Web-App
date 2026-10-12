@@ -97,6 +97,9 @@ class NemotronDiarizer:
             logits = self.model(**inputs).logits
             
         extracted = self.processor.extract_speaker_dict(logits, inputs.attention_mask)[0]
+        del inputs, logits
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         segments = []
         for seg in extracted:
